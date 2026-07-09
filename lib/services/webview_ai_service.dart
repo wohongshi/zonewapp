@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 /// WebView-based AI service that borrows from WebAI2API's approach:
