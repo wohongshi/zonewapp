@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../models/task_template.dart';
 import '../../providers/account_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../services/form_scraper_service.dart';
 import '../../services/ai_form_filler_service.dart';
 
@@ -852,27 +853,61 @@ class _ZongpingBrowserScreenState
     );
   }
 
-  /// 账号数据快捷填充按钮
+  /// 账号数据 + 创新探究内容快捷填充
   Widget _buildAccountQuickFill(TextEditingController ctrl) {
     final accounts = ref.watch(accountProvider);
-    if (accounts.isEmpty) return const SizedBox.shrink();
+    final settings = ref.watch(settingsProvider);
+    final subjectContents = settings.subjectContents;
+
+    final hasAccounts = accounts.isNotEmpty;
+    final hasSubjects = subjectContents.isNotEmpty &&
+        subjectContents.values.any((v) => v.isNotEmpty);
+
+    if (!hasAccounts && !hasSubjects) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 4,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 通用变量
-          _quickBtn('{ai_content}', ctrl, Colors.blue),
-          // 账号职务
-          for (final acc in accounts)
-            for (final pos in acc.positions)
-              _quickBtn(pos.title, ctrl, Colors.green),
-          // 账号奖惩
-          for (final acc in accounts)
-            for (final rew in acc.rewards)
-              _quickBtn(rew.title, ctrl, Colors.orange),
+          // AI变量 + 账号数据
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              _quickBtn('{ai_content}', ctrl, Colors.blue),
+              if (hasAccounts) ...[
+                for (final acc in accounts) ...[
+                  _quickBtn(acc.username, ctrl, Colors.indigo),
+                  _quickBtn(acc.teacherName, ctrl, Colors.indigo),
+                  for (final pos in acc.positions)
+                    _quickBtn(pos.title, ctrl, Colors.green),
+                  for (final rew in acc.rewards)
+                    _quickBtn(rew.title, ctrl, Colors.orange),
+                ],
+              ],
+            ],
+          ),
+          // 创新探究内容
+          if (hasSubjects) ...[
+            const SizedBox(height: 4),
+            Text('创新探究:',
+                style: TextStyle(
+                    fontSize: 10, color: Colors.grey.shade600)),
+            const SizedBox(height: 2),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                for (final entry in subjectContents.entries)
+                  if (entry.value.isNotEmpty)
+                    _quickBtn(
+                        '${entry.key}: ${entry.value.substring(0, entry.value.length > 20 ? 20 : entry.value.length)}...',
+                        ctrl,
+                        Colors.teal),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1021,9 +1056,53 @@ class _ZongpingBrowserScreenState
 
   Widget _buildDirectFillTab() {
     final accounts = ref.watch(accountProvider);
+    final settings = ref.watch(settingsProvider);
+    final subjectContents = settings.subjectContents;
+
     return Column(children: [
+      // 可用数据预览
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Card(
+          margin: EdgeInsets.zero,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('可用数据',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary)),
+                const SizedBox(height: 4),
+                // 账号
+                if (accounts.isNotEmpty)
+                  for (final acc in accounts)
+                    Text('👤 ${acc.username} | 班主任: ${acc.teacherName} | ${acc.subjects.join("/")}',
+                        style: const TextStyle(fontSize: 10)),
+                // 职务
+                for (final acc in accounts)
+                  if (acc.positions.isNotEmpty)
+                    Text('📋 职务: ${acc.positions.map((p) => p.title).join(", ")}',
+                        style: const TextStyle(fontSize: 10)),
+                // 奖惩
+                for (final acc in accounts)
+                  if (acc.rewards.isNotEmpty)
+                    Text('🏆 奖惩: ${acc.rewards.map((r) => r.title).join(", ")}',
+                        style: const TextStyle(fontSize: 10)),
+                // 创新探究
+                if (subjectContents.isNotEmpty)
+                  Text('📚 探究: ${subjectContents.entries.where((e) => e.value.isNotEmpty).map((e) => e.key).join(", ")}',
+                      style: const TextStyle(fontSize: 10)),
+              ],
+            ),
+          ),
+        ),
+      ),
       // 账号选择
-      if (accounts.isNotEmpty)
+      if (accounts.length > 1)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: Row(children: [
@@ -1172,6 +1251,8 @@ class _ZongpingBrowserScreenState
   Future<void> _executeDirectSteps() async {
     setState(() { _isFilling = true; _fillResults = []; });
     final results = <String>[];
+    final accounts = ref.read(accountProvider);
+    final settings = ref.read(settingsProvider);
 
     for (final step in _template.steps) {
       if (!_isFilling) break;
@@ -1179,10 +1260,8 @@ class _ZongpingBrowserScreenState
         switch (step.action) {
           case 'fill':
             String value = step.value ?? '';
-            // Replace {ai_content} with directValue if available
-            if (value == '{ai_content}' && _template.directValue != null) {
-              value = _template.directValue!;
-            }
+            // Replace variables
+            value = _replaceVariables(value, accounts, settings);
             if (step.selector.isNotEmpty && value.isNotEmpty) {
               await FormScraperService.instance
                   .fillField(step.selector, value);
@@ -1238,5 +1317,39 @@ class _ZongpingBrowserScreenState
           duration: const Duration(seconds: 3)));
     }
     setState(() => _isFilling = false);
+  }
+
+  /// Replace variables in a value string with actual data.
+  String _replaceVariables(
+      String value, List accounts, dynamic settings) {
+    // {ai_content} -> directValue
+    if (value == '{ai_content}' && _template.directValue != null) {
+      value = _template.directValue!;
+    }
+
+    // {username} -> first account username
+    if (accounts.isNotEmpty) {
+      value = value.replaceAll('{username}', accounts.first.username);
+      value = value.replaceAll('{teacher}', accounts.first.teacherName);
+      value = value.replaceAll('{subjects}', accounts.first.subjects.join('、'));
+      // {position} -> first position title
+      if (accounts.first.positions.isNotEmpty) {
+        value = value.replaceAll('{position}', accounts.first.positions.first.title);
+        value = value.replaceAll('{position_desc}', accounts.first.positions.first.description);
+      }
+      // {reward} -> first reward title
+      if (accounts.first.rewards.isNotEmpty) {
+        value = value.replaceAll('{reward}', accounts.first.rewards.first.title);
+      }
+    }
+
+    // {subject:物理} -> subject content for 物理
+    final subjectPattern = RegExp(r'\{subject:(.+?)\}');
+    value = value.replaceAllMapped(subjectPattern, (match) {
+      final subject = match.group(1)!;
+      return settings.subjectContents[subject] ?? '';
+    });
+
+    return value;
   }
 }

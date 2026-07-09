@@ -9,6 +9,7 @@ import 'content_settings_screen.dart';
 import 'backup_restore_screen.dart';
 import 'about_screen.dart';
 import 'debug_screen.dart';
+import 'help_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -186,6 +187,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const DebugScreen()),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // Help
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.help_outline, color: Theme.of(context).colorScheme.primary),
+            title: const Text('使用帮助'),
+            subtitle: const Text('功能说明、变量列表、常见问题'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HelpScreen()),
               );
             },
           ),
