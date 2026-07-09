@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/web_server_service.dart';
 import 'ai_mode_screen.dart';
-import '../terminal/free_ai_screen.dart';
 import 'template_list_screen.dart';
 import 'content_settings_screen.dart';
 import 'backup_restore_screen.dart';
@@ -49,25 +48,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const AiModeScreen()),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        // Free AI
-        Card(
-          child: ListTile(
-            leading: Icon(Icons.auto_awesome, color: Theme.of(context).colorScheme.primary),
-            title: const Text('免费 AI'),
-            subtitle: Text(settings.aiMode == 'free_external' || settings.aiMode == 'free_local'
-                ? '已配置'
-                : '通过 WebAI2API 免费使用 DeepSeek/GPT/Gemini'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const FreeAiScreen()),
               );
             },
           ),

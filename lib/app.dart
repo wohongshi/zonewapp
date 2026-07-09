@@ -14,15 +14,27 @@ class ZonewApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
-    final themeMode = _getThemeMode(settings.themeMode);
+    final themeModeSetting = settings.themeMode;
 
     return DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        // Only use dynamic colors when user explicitly chose 'monet'
+        final useDynamic = themeModeSetting == 'monet';
+
+        final theme = AppTheme.light(
+          dynamicScheme: useDynamic ? lightDynamic : null,
+        );
+        final darkTheme = AppTheme.dark(
+          dynamicScheme: useDynamic ? darkDynamic : null,
+        );
+
+        final themeMode = _getThemeMode(themeModeSetting);
+
         return MaterialApp(
           title: 'ZonewApp',
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(dynamicScheme: lightDynamic),
-          darkTheme: AppTheme.dark(dynamicScheme: darkDynamic),
+          theme: theme,
+          darkTheme: darkTheme,
           themeMode: themeMode,
           home: const MainScreen(),
         );
@@ -36,6 +48,8 @@ class ZonewApp extends ConsumerWidget {
         return ThemeMode.light;
       case 'dark':
         return ThemeMode.dark;
+      case 'monet':
+        return ThemeMode.system; // Monet follows system but uses dynamic colors
       default:
         return ThemeMode.system;
     }
