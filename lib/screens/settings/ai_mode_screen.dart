@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/settings.dart';
 import '../../services/ai_service.dart';
+import '../../services/webai2api_service.dart';
 import '../terminal/terminal_screen.dart';
 
 class AiModeScreen extends ConsumerStatefulWidget {
@@ -487,26 +488,96 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
   }
 
   Widget _buildWebaiLocal() {
+    final svc = WebAi2ApiService.instance;
     return Column(
       children: [
-        // Status
-        FutureBuilder<Map<String, bool>>(
-          future: _checkLocalStatus(),
+        // Service status with address
+        FutureBuilder<Map<String, dynamic>>(
+          future: _checkLocalFullStatus(),
           builder: (context, snapshot) {
-            final status = snapshot.data ??
-                {
-                  'termux': false,
-                  'node': false,
-                  'webai': false,
-                  'running': false
-                };
-            return Column(
-              children: [
-                _statusRow('Termux 环境', status['termux']!),
-                _statusRow('Node.js', status['node']!),
-                _statusRow('WebAI2API', status['webai']!),
-                _statusRow('服务运行中', status['running']!),
-              ],
+            final status = snapshot.data ?? {};
+            final installed = status['installed'] ?? false;
+            final running = status['running'] ?? false;
+            final token = status['token'] as String?;
+
+            return Card(
+              color: running
+                  ? Colors.green.shade50
+                  : installed
+                      ? Colors.orange.shade50
+                      : Colors.grey.shade100,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          running
+                              ? Icons.check_circle
+                              : installed
+                                  ? Icons.pause_circle
+                                  : Icons.cancel,
+                          color: running
+                              ? Colors.green
+                              : installed
+                                  ? Colors.orange
+                                  : Colors.grey,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          running
+                              ? '服务运行中'
+                              : installed
+                                  ? '已安装，未启动'
+                                  : '未安装',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    if (running) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('📡 服务地址',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            SelectableText(
+                              svc.lanUrl,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 14,
+                                color: Colors.blue,
+                              ),
+                            ),
+                            if (token != null) ...[
+                              const SizedBox(height: 4),
+                              Text('Token: $token',
+                                  style: const TextStyle(
+                                      fontSize: 11, color: Colors.grey)),
+                            ],
+                            const SizedBox(height: 4),
+                            const Text(
+                              '在 WebAI2API 外部模式中填入上方地址',
+                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             );
           },
         ),
@@ -525,14 +596,36 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
         ),
         const SizedBox(height: 8),
 
-        // One-click start
-        OutlinedButton.icon(
-          onPressed: _oneClickStart,
-          icon: const Icon(Icons.play_circle),
-          label: const Text('一键启动'),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 48),
+        // One-click start / stop
+        if (WebAi2ApiService.instance.isRunning)
+          OutlinedButton.icon(
+            onPressed: _oneClickStop,
+            icon: const Icon(Icons.stop, color: Colors.red),
+            label: const Text('停止服务', style: TextStyle(color: Colors.red)),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              side: const BorderSide(color: Colors.red),
+            ),
+          )
+        else
+          OutlinedButton.icon(
+            onPressed: _oneClickStart,
+            icon: const Icon(Icons.play_circle),
+            label: const Text('一键启动'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+            ),
           ),
+        const SizedBox(height: 8),
+
+        // Auto-start toggle
+        SwitchListTile(
+          title: const Text('App 启动时自动运行'),
+          subtitle: const Text('打开 App 自动启动 WebAI2API 服务'),
+          value: true,
+          onChanged: (v) {
+            // TODO: save auto-start preference
+          },
         ),
         const SizedBox(height: 8),
 
@@ -573,6 +666,19 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
     );
   }
 
+  Future<Map<String, dynamic>> _checkLocalFullStatus() async {
+    final svc = WebAi2ApiService.instance;
+    final installed = await _fileExists(
+        '/data/data/com.termux/files/home/WebAI2API/package.json');
+    final running = installed ? await svc.healthCheck() : false;
+    final token = installed ? await svc.getApiToken() : null;
+    return {
+      'installed': installed,
+      'running': running,
+      'token': token,
+    };
+  }
+
   Future<Map<String, bool>> _checkLocalStatus() async {
     return {
       'termux': await _fileExists(
@@ -581,7 +687,7 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
           '/data/data/com.termux/files/usr/bin/node'),
       'webai': await _fileExists(
           '/data/data/com.termux/files/home/WebAI2API/package.json'),
-      'running': false, // TODO: check if port 3000 is listening
+      'running': await WebAi2ApiService.instance.healthCheck(),
     };
   }
 
@@ -629,14 +735,12 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
   }
 
   void _oneClickDeploy() {
-    // Run deployment commands in terminal
     final deployScript = '''
 echo "=============================="
 echo " WebAI2API 一键部署"
 echo "=============================="
 echo ""
 
-# Check Termux
 if [ ! -d "/data/data/com.termux" ]; then
   echo "❌ 未检测到 Termux，请先安装 Termux"
   echo "   下载地址: https://f-droid.org/packages/com.termux/"
@@ -667,8 +771,12 @@ echo "=============================="
 echo " ✅ 部署完成！"
 echo "=============================="
 echo ""
-echo "下一步: 点击「一键启动」"
+echo "📡 服务地址: http://localhost:3000"
 echo ""
+echo "正在自动启动服务..."
+echo ""
+
+npm start
 ''';
 
     TerminalService.instance.start();
@@ -682,32 +790,45 @@ echo ""
     );
   }
 
-  void _oneClickStart() {
-    final startScript = '''
-echo "=============================="
-echo " WebAI2API 一键启动"
-echo "=============================="
-echo ""
-
+  void _oneClickStart() async {
+    final svc = WebAi2ApiService.instance;
+    final started = await svc.start();
+    if (started) {
+      setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ 服务已启动\n地址: ${svc.lanUrl}'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } else {
+      // Fallback: open terminal
+      final startScript = '''
+echo "启动 WebAI2API..."
 cd ~/WebAI2API
-
-echo "启动服务..."
-echo "访问 http://localhost:3000 登录 AI 账号"
-echo "登录后回到 App 点击「测试连接」"
-echo ""
-
 npm start
 ''';
+      TerminalService.instance.start();
+      Future.delayed(const Duration(seconds: 1), () {
+        TerminalService.instance.write(startScript);
+      });
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const TerminalScreen()),
+      );
+    }
+  }
 
-    TerminalService.instance.start();
-    Future.delayed(const Duration(seconds: 1), () {
-      TerminalService.instance.write(startScript);
-    });
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const TerminalScreen()),
-    );
+  void _oneClickStop() async {
+    await WebAi2ApiService.instance.stop();
+    setState(() {});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('服务已停止')),
+      );
+    }
   }
 
   // ==================== Save ====================
