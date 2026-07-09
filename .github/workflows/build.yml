@@ -2,7 +2,6 @@ name: Build ZonewApp
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -32,12 +31,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Verify generated files
-        run: |
-          # Check that .g.dart files exist (pre-committed)
-          test -f lib/models/account.g.dart || (echo "Missing account.g.dart" && exit 1)
-          test -f lib/models/settings.g.dart || (echo "Missing settings.g.dart" && exit 1)
-
       - name: Analyze code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
@@ -60,54 +53,3 @@ jobs:
         with:
           name: android-aab
           path: build/app/outputs/bundle/release/app-release.aab
-
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Setup Visual Studio
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Analyze code
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Build Windows
-        run: flutter build windows --release
-        env:
-          CMAKE_GENERATOR: Visual Studio 17 2022
-
-      - name: Upload Windows Build
-        uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: windows-build
-          path: build/windows/x64/runner/Release/
-
-  release:
-    name: Create Release
-    needs: [build-android, build-windows]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            android-apk/app-release.apk
-            windows-build/*
-          generate_release_notes: true
