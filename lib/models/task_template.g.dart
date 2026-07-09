@@ -12,12 +12,14 @@ TaskTemplate _$TaskTemplateFromJson(Map<String, dynamic> json) =>
       name: json['name'] as String,
       url: json['url'] as String,
       enabled: json['enabled'] as bool? ?? true,
+      useAi: json['useAi'] as bool? ?? true,
       steps: (json['steps'] as List<dynamic>?)
               ?.map((e) => TemplateStep.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
       aiPrompt: json['aiPrompt'] as String?,
       aiTaskType: json['aiTaskType'] as String?,
+      directValue: json['directValue'] as String?,
     );
 
 Map<String, dynamic> _$TaskTemplateToJson(TaskTemplate instance) =>
@@ -26,9 +28,11 @@ Map<String, dynamic> _$TaskTemplateToJson(TaskTemplate instance) =>
       'name': instance.name,
       'url': instance.url,
       'enabled': instance.enabled,
+      'useAi': instance.useAi,
       'steps': instance.steps,
       'aiPrompt': instance.aiPrompt,
       'aiTaskType': instance.aiTaskType,
+      'directValue': instance.directValue,
     };
 
 TemplateStep _$TemplateStepFromJson(Map<String, dynamic> json) =>

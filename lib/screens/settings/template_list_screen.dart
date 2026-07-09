@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/task_template.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/account_provider.dart';
 import 'template_editor_screen.dart';
 import 'zongping_browser_screen.dart';
 
-/// Screen for managing all 12 综评 task templates.
 class TemplateListScreen extends ConsumerStatefulWidget {
   const TemplateListScreen({super.key});
 
@@ -16,6 +16,8 @@ class TemplateListScreen extends ConsumerStatefulWidget {
 
 class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
   List<TaskTemplate> _templates = [];
+  final _loginUrlController = TextEditingController();
+  final _baseUrlController = TextEditingController();
 
   @override
   void initState() {
@@ -23,16 +25,28 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
     _loadTemplates();
   }
 
+  @override
+  void dispose() {
+    _loginUrlController.dispose();
+    _baseUrlController.dispose();
+    super.dispose();
+  }
+
   void _loadTemplates() {
     final settings = ref.read(settingsProvider);
-    final templateData = settings.aiConfig?['taskTemplates'];
+    final config = settings.aiConfig ?? {};
+    final templateData = config['taskTemplates'];
+
+    _loginUrlController.text =
+        config['loginUrl'] ?? 'https://szpj.sdei.edu.cn/zhszpj/web/login.htm';
+    _baseUrlController.text =
+        config['baseUrl'] ?? 'https://szpj.sdei.edu.cn/zhszpj/web';
 
     if (templateData != null && templateData is List) {
       _templates = templateData
           .map((e) => TaskTemplate.fromJson(Map<String, dynamic>.from(e)))
           .toList();
     } else {
-      // Load defaults
       _templates = TaskTemplate.defaults();
     }
   }
@@ -40,21 +54,28 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
   Future<void> _saveTemplates() async {
     final templateJson = _templates.map((t) => t.toJson()).toList();
     final currentConfig =
-        ref.read(settingsProvider).aiConfig ?? {};
-    final newConfig = Map<String, dynamic>.from(currentConfig);
-    newConfig['taskTemplates'] = templateJson;
+        Map<String, dynamic>.from(ref.read(settingsProvider).aiConfig ?? {});
+    currentConfig['taskTemplates'] = templateJson;
+    currentConfig['loginUrl'] = _loginUrlController.text.trim();
+    currentConfig['baseUrl'] = _baseUrlController.text.trim();
 
-    await ref.read(settingsProvider.notifier).updateAiConfig(newConfig);
-
+    await ref.read(settingsProvider.notifier).updateAiConfig(currentConfig);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ 模板已保存')),
+        const SnackBar(content: Text('✅ 配置已保存')),
       );
     }
   }
 
+  /// Called from browser when steps are modified — saves back to list.
+  void _onTemplateUpdated(int index, TaskTemplate updated) {
+    setState(() => _templates[index] = updated);
+    _saveTemplates(); // Auto-save
+  }
+
   @override
   Widget build(BuildContext context) {
+    final accounts = ref.watch(accountProvider);
     final configuredCount =
         _templates.where((t) => t.steps.any((s) => s.selector.isNotEmpty)).length;
 
@@ -73,7 +94,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Header
+          // ===== 登录网址 =====
           Card(
             color: Theme.of(context).colorScheme.primaryContainer,
             child: Padding(
@@ -81,24 +102,70 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.settings,
-                          color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Text('综评项目自动化配置',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold)),
-                    ],
+                  Row(children: [
+                    Icon(Icons.login,
+                        color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Text('登录网址',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold)),
+                  ]),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _loginUrlController,
+                    decoration: const InputDecoration(
+                      labelText: '综评平台登录页',
+                      hintText: 'https://szpj.sdei.edu.cn/zhszpj/web/login.htm',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.link),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _saveTemplates(),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '配置 12 个综评项目的页面 URL、表单选择器和填写规则。\n'
-                    '首次使用需要逐个配置，填写各页面的 CSS 选择器。',
-                    style: Theme.of(context).textTheme.bodySmall,
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // ===== 账号选择提示 =====
+          if (accounts.isNotEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(children: [
+                  const Icon(Icons.people, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '已有 ${accounts.length} 个账号，综评填写时可选择账号自动填充内容',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   ),
+                ]),
+              ),
+            ),
+          if (accounts.isNotEmpty) const SizedBox(height: 12),
+
+          // ===== 进度 =====
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Icon(Icons.settings,
+                        color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Text('12 个综评项目',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold)),
+                  ]),
                   const SizedBox(height: 8),
                   LinearProgressIndicator(
                     value: configuredCount / 12,
@@ -111,101 +178,133 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
-          // Template list
+          // ===== 12个项目列表 =====
           ..._templates.asMap().entries.map((entry) {
             final index = entry.key;
-            final template = entry.value;
-            final hasSelectors =
-                template.steps.any((s) => s.selector.isNotEmpty);
+            final t = entry.value;
+            final hasSelectors = t.steps.any((s) => s.selector.isNotEmpty);
 
             return Card(
-              margin: const EdgeInsets.only(bottom: 8),
+              margin: const EdgeInsets.only(bottom: 6),
               child: ListTile(
+                dense: true,
                 leading: CircleAvatar(
-                  backgroundColor: template.enabled
-                      ? (hasSelectors
-                          ? Colors.green.shade100
-                          : Colors.orange.shade100)
+                  radius: 16,
+                  backgroundColor: t.enabled
+                      ? (t.useAi
+                          ? Colors.blue.shade100
+                          : Colors.green.shade100)
                       : Colors.grey.shade200,
-                  child: Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      color: template.enabled
-                          ? (hasSelectors ? Colors.green : Colors.orange)
-                          : Colors.grey,
-                      fontWeight: FontWeight.bold,
+                  child: Text('${index + 1}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: t.enabled
+                            ? (t.useAi ? Colors.blue : Colors.green)
+                            : Colors.grey,
+                        fontWeight: FontWeight.bold,
+                      )),
+                ),
+                title: Row(children: [
+                  Text(t.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: t.enabled ? null : Colors.grey,
+                      )),
+                  const SizedBox(width: 6),
+                  // AI/直接 标签
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: t.useAi
+                          ? Colors.blue.shade50
+                          : Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: t.useAi
+                            ? Colors.blue.shade200
+                            : Colors.green.shade200,
+                      ),
+                    ),
+                    child: Text(
+                      t.useAi ? 'AI' : '直接',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: t.useAi
+                            ? Colors.blue.shade700
+                            : Colors.green.shade700,
+                      ),
                     ),
                   ),
-                ),
-                title: Text(
-                  template.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: template.enabled ? null : Colors.grey,
-                  ),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      template.url.replaceAll(
-                          'https://szpj.sdei.edu.cn/zhszpj/web/', ''),
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        if (template.aiPrompt != null)
-                          const Icon(Icons.smart_toy,
-                              size: 12, color: Colors.blue),
-                        if (hasSelectors)
-                          const Icon(Icons.check_circle,
-                              size: 12, color: Colors.green),
-                        if (!hasSelectors)
-                          const Icon(Icons.warning,
-                              size: 12, color: Colors.orange),
-                        const SizedBox(width: 4),
-                        Text(
-                          hasSelectors ? '已配置选择器' : '需要配置选择器',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: hasSelectors ? Colors.green : Colors.orange,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                ]),
+                subtitle: Text(
+                  t.url.replaceAll('https://szpj.sdei.edu.cn/zhszpj/web/', ''),
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 trailing: Switch(
-                  value: template.enabled,
+                  value: t.enabled,
                   onChanged: (v) {
-                    setState(() {
-                      _templates[index] = template.copyWith(enabled: v);
-                    });
+                    setState(() => _templates[index] = t.copyWith(enabled: v));
                   },
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                onTap: () => _openBrowser(template),
+                onTap: () => _openBrowser(index),
                 onLongPress: () => _editTemplate(index),
               ),
             );
           }),
 
-          // Hint
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '💡 点击项目打开内置浏览器 | 长按编辑配置',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              textAlign: TextAlign.center,
+          // ===== 基础网址 =====
+          const SizedBox(height: 4),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Icon(Icons.language, size: 18),
+                    const SizedBox(width: 8),
+                    Text('基础网址',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(fontWeight: FontWeight.bold)),
+                  ]),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _baseUrlController,
+                    decoration: const InputDecoration(
+                      hintText: 'https://szpj.sdei.edu.cn/zhszpj/web',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.link, size: 16),
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontSize: 13),
+                    onSubmitted: (_) => _saveTemplates(),
+                  ),
+                ],
+              ),
             ),
           ),
 
           const SizedBox(height: 8),
 
-          // Save button
+          // ===== 提示 =====
+          Text(
+            '💡 点击项目 → 内置浏览器（可编辑步骤） | 长按 → 快速编辑',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
+          ),
+
+          const SizedBox(height: 12),
+
+          // ===== 保存按钮 =====
           FilledButton.icon(
             onPressed: _saveTemplates,
             icon: const Icon(Icons.save),
@@ -214,45 +313,20 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
               minimumSize: const Size(double.infinity, 48),
             ),
           ),
-          const SizedBox(height: 8),
-
-          // Help
-          Card(
-            color: Colors.blue.shade50,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('📋 配置指南',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '1. 点击项目 → 打开内置浏览器查看综评页面\n'
-                    '2. 页面自动抓取表单字段（绿色=已填，橙色=待填）\n'
-                    '3. 切换到"AI生成"标签 → 点击一键生成\n'
-                    '4. AI内容自动拆分并匹配字段\n'
-                    '5. 切换到"填写"标签 → 点击一键填写\n\n'
-                    '长按项目可手动编辑配置（URL、选择器等）',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  void _openBrowser(TaskTemplate template) {
+  void _openBrowser(int index) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ZongpingBrowserScreen(template: template),
+        builder: (context) => ZongpingBrowserScreen(
+          template: _templates[index],
+          loginUrl: _loginUrlController.text.trim(),
+          onStepsChanged: (updated) => _onTemplateUpdated(index, updated),
+        ),
       ),
     );
   }
@@ -265,9 +339,9 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
             TemplateEditorScreen(template: _templates[index]),
       ),
     );
-
     if (result != null) {
       setState(() => _templates[index] = result);
+      _saveTemplates();
     }
   }
 }
