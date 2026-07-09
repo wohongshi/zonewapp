@@ -61,7 +61,7 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
         _webaiUrlController.text = config['serverUrl'] ?? '';
         _webaiTokenController.text = config['serverToken'] ?? '';
         _webaiModel = config['model'] ?? 'deepseek-chat';
-
+      }
     }
   }
 
@@ -732,7 +732,7 @@ npm start
         'serverToken': _webaiTokenController.text,
         'model': _webaiModel,
       });
-
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
