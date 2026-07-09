@@ -19,17 +19,25 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
-  String get _lanIp {
+  String _lanIp = 'localhost';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLanIp();
+  }
+
+  Future<void> _loadLanIp() async {
     try {
-      for (final iface in NetworkInterface.listSync()) {
+      for (final iface in await NetworkInterface.list()) {
         for (final addr in iface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
-            return addr.address;
+            if (mounted) setState(() => _lanIp = addr.address);
+            return;
           }
         }
       }
     } catch (_) {}
-    return 'localhost';
   }
   @override
   Widget build(BuildContext context) {
