@@ -6,6 +6,7 @@ import 'ai_mode_screen.dart';
 import 'content_settings_screen.dart';
 import 'backup_restore_screen.dart';
 import 'about_screen.dart';
+import 'debug_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -116,6 +117,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 await WebServerService.instance.stop();
               }
               setState(() {});
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // Debug
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.bug_report),
+            title: const Text('调试'),
+            subtitle: const Text('API连接性检测与诊断'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DebugScreen()),
+              );
             },
           ),
         ),
