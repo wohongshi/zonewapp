@@ -9,7 +9,6 @@ on:
 
 env:
   FLUTTER_VERSION: '3.24.5'
-  RUST_TOOLCHAIN: 'stable'
 
 jobs:
   build-android:
@@ -17,45 +16,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
-      
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
-      
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      
+
       - name: Install dependencies
-        run: |
-          flutter pub get
-          cargo install flutter_rust_bridge_codegen
-      
-      - name: Generate Rust bindings
-        run: flutter_rust_bridge_codegen generate
-      
+        run: flutter pub get
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: Build Android APK
-        run: |
-          flutter build apk --release
-          flutter build appbundle --release
-      
+        run: flutter build apk --release
+
+      - name: Build Android AAB
+        run: flutter build appbundle --release
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-      
+
       - name: Upload AAB
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: android-aab
           path: build/app/outputs/bundle/release/app-release.aab
@@ -65,29 +60,25 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
-      
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Install dependencies
-        run: |
-          flutter pub get
-          cargo install flutter_rust_bridge_codegen
-      
-      - name: Generate Rust bindings
-        run: flutter_rust_bridge_codegen generate
-      
+        run: flutter pub get
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: Build Windows
         run: flutter build windows --release
-      
+
       - name: Upload Windows Build
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: windows-build
           path: build/windows/x64/runner/Release/
@@ -101,7 +92,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
-      
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
