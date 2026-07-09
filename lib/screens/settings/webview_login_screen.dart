@@ -21,8 +21,7 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
   bool _isLoading = true;
   String _currentUrl = '';
   String _status = '加载中...';
-  String? _capturedToken;
-  String? _capturedCookies;
+  bool _hasCapturedRequest = false;
 
   @override
   void initState() {
@@ -53,184 +52,165 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
               _isLoading = false;
             });
             _injectInterceptors();
-            _checkLoginStatus();
           },
         ),
       )
       ..loadRequest(Uri.parse(widget.url));
   }
 
-  /// Inject JavaScript interceptors to capture auth tokens from network requests.
-  /// This bypasses the HTTP-only cookie limitation of document.cookie.
+  /// Inject interceptors that capture the FULL request details from DeepSeek's
+  /// web chat API calls. We capture: URL, all headers (including cookies),
+  /// and the request body format. This allows us to replay requests later.
   void _injectInterceptors() {
     const js = r'''
     (function() {
       if (window.__zonewInjected) return;
       window.__zonewInjected = true;
-      window.__zonewTokens = [];
-      window.__zonewCookies = '';
+      window.__zonewCapturedRequests = [];
 
-      // Intercept XMLHttpRequest to capture Authorization headers
+      // Intercept fetch API - capture full request details
+      var origFetch = window.fetch;
+      window.fetch = function(input, init) {
+        var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+        var method = (init && init.method) || 'GET';
+
+        // Only capture chat/completion API calls
+        if (url.indexOf('/api/') >= 0 || url.indexOf('/chat') >= 0 ||
+            url.indexOf('completions') >= 0 || url.indexOf('conversation') >= 0) {
+          var headers = {};
+          if (init && init.headers) {
+            if (init.headers instanceof Headers) {
+              init.headers.forEach(function(value, key) { headers[key] = value; });
+            } else if (typeof init.headers === 'object') {
+              for (var k in init.headers) { headers[k] = init.headers[k]; }
+            }
+          }
+          // Always capture cookies
+          headers['cookie'] = document.cookie;
+
+          var body = null;
+          if (init && init.body) {
+            try { body = typeof init.body === 'string' ? init.body : JSON.stringify(init.body); } catch(e) {}
+          }
+
+          var captured = {
+            url: url,
+            method: method,
+            headers: headers,
+            body: body,
+            timestamp: Date.now()
+          };
+          window.__zonewCapturedRequests.push(captured);
+          console.log('[Zonew] Captured API request: ' + method + ' ' + url);
+        }
+        return origFetch.apply(this, arguments);
+      };
+
+      // Also intercept XMLHttpRequest
       var origOpen = XMLHttpRequest.prototype.open;
       var origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+      var origSend = XMLHttpRequest.prototype.send;
+
       XMLHttpRequest.prototype.open = function(method, url) {
+        this.__zonewMethod = method;
         this.__zonewUrl = url;
         this.__zonewHeaders = {};
         return origOpen.apply(this, arguments);
       };
       XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
-        this.__zonewHeaders[name.toLowerCase()] = value;
+        this.__zonewHeaders[name] = value;
         return origSetHeader.apply(this, arguments);
       };
-      var origSend = XMLHttpRequest.prototype.send;
-      XMLHttpRequest.prototype.send = function() {
-        var auth = this.__zonewHeaders['authorization'];
-        if (auth && auth.indexOf('Bearer') >= 0) {
-          var token = auth.replace('Bearer ', '');
-          if (window.__zonewTokens.indexOf(token) < 0) {
-            window.__zonewTokens.push(token);
-          }
+      XMLHttpRequest.prototype.send = function(body) {
+        var url = this.__zonewUrl || '';
+        if (url.indexOf('/api/') >= 0 || url.indexOf('/chat') >= 0 ||
+            url.indexOf('completions') >= 0 || url.indexOf('conversation') >= 0) {
+          var headers = Object.assign({}, this.__zonewHeaders);
+          headers['cookie'] = document.cookie;
+          var captured = {
+            url: url,
+            method: this.__zonewMethod || 'POST',
+            headers: headers,
+            body: body,
+            timestamp: Date.now()
+          };
+          window.__zonewCapturedRequests.push(captured);
+          console.log('[Zonew] Captured XHR request: ' + this.__zonewMethod + ' ' + url);
         }
-        // Also capture cookies from response
-        this.addEventListener('load', function() {
-          try {
-            var setCookies = this.getAllResponseHeaders();
-            if (setCookies.indexOf('set-cookie') >= 0) {
-              window.__zonewCookies = document.cookie;
-            }
-          } catch(e) {}
-        });
         return origSend.apply(this, arguments);
       };
 
-      // Intercept fetch API
-      var origFetch = window.fetch;
-      window.fetch = function(url, opts) {
-        if (opts && opts.headers) {
-          var auth = null;
-          if (opts.headers instanceof Headers) {
-            auth = opts.headers.get('authorization');
-          } else if (typeof opts.headers === 'object') {
-            auth = opts.headers['authorization'] || opts.headers['Authorization'];
-          }
-          if (auth && auth.indexOf('Bearer') >= 0) {
-            var token = auth.replace('Bearer ', '');
-            if (window.__zonewTokens.indexOf(token) < 0) {
-              window.__zonewTokens.push(token);
-            }
-          }
-        }
-        return origFetch.apply(this, arguments).then(function(resp) {
-          return resp;
-        });
-      };
-
-      console.log('[Zonew] Network interceptors injected');
+      console.log('[Zonew] API interceptors injected');
     })();
     ''';
     _controller.runJavaScript(js);
   }
 
-  Future<void> _checkLoginStatus() async {
-    try {
-      // Check captured tokens first
-      final tokensResult = await _controller.runJavaScriptReturningResult(
-        'JSON.stringify(window.__zonewTokens || [])',
-      );
-      final tokensStr = tokensResult.toString().replaceAll('"', '');
-      if (tokensStr != '[]' && tokensStr.isNotEmpty) {
-        try {
-          final List<dynamic> tokens = jsonDecode(tokensStr);
-          if (tokens.isNotEmpty) {
-            _capturedToken = tokens.last.toString();
-            setState(() {
-              _status = '✅ 已捕获认证 Token';
-            });
-            return;
-          }
-        } catch (_) {}
-      }
-
-      // Fallback: check document.cookie (works for non-HttpOnly cookies)
-      final cookies = await _controller.runJavaScriptReturningResult(
-        'document.cookie',
-      );
-      final cookieStr = cookies.toString().replaceAll('"', '');
-      if (cookieStr.isNotEmpty &&
-          (cookieStr.contains('token') ||
-              cookieStr.contains('session') ||
-              cookieStr.contains('user') ||
-              cookieStr.contains('ds_chat'))) {
-        _capturedCookies = cookieStr;
-        setState(() {
-          _status = '✅ 已检测到登录状态';
-        });
-      } else {
-        setState(() {
-          _status = '⏳ 请在页面中登录';
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _status = '⏳ 请在页面中登录';
-      });
-    }
-  }
-
   Future<void> _extractAndReturn() async {
-    String cookies = '';
-    String sessionToken = '';
-
     try {
-      // 1. Try to get captured token from network interception
-      final tokensResult = await _controller.runJavaScriptReturningResult(
-        'JSON.stringify(window.__zonewTokens || [])',
+      // Get captured requests
+      final result = await _controller.runJavaScriptReturningResult(
+        'JSON.stringify(window.__zonewCapturedRequests || [])',
       );
-      final tokensStr = tokensResult.toString().replaceAll('"', '');
-      if (tokensStr != '[]' && tokensStr.isNotEmpty) {
-        try {
-          final List<dynamic> tokens = jsonDecode(tokensStr);
-          if (tokens.isNotEmpty) {
-            sessionToken = tokens.last.toString();
-          }
-        } catch (_) {}
-      }
+      final resultStr = result.toString();
+      // Remove surrounding quotes that JS toString adds
+      final cleanStr = resultStr.startsWith('"')
+          ? resultStr.substring(1, resultStr.length - 1)
+          : resultStr;
+      // Unescape JSON string escaping
+      final unescaped = cleanStr.replaceAll('\\"', '"').replaceAll('\\\\', '\\');
 
-      // 2. Get cookies (including non-HttpOnly ones)
-      final cookiesResult = await _controller.runJavaScriptReturningResult(
-        'document.cookie',
-      );
-      cookies = cookiesResult.toString().replaceAll('"', '');
-
-      // 3. Try localStorage for tokens (DeepSeek may store auth there)
-      if (sessionToken.isEmpty) {
-        try {
-          final lsResult = await _controller.runJavaScriptReturningResult(
-            '(function(){ var keys = Object.keys(localStorage); var t = ""; for(var i=0;i<keys.length;i++){ var v=localStorage.getItem(keys[i]); if(v && v.length>20 && (keys[i].indexOf("token")>=0 || keys[i].indexOf("auth")>=0 || keys[i].indexOf("session")>=0 || keys[i].indexOf("user")>=0)) { t = v; } } return t; })()',
-          );
-          final lsToken = lsResult.toString().replaceAll('"', '');
-          if (lsToken.isNotEmpty && lsToken.length > 20) {
-            sessionToken = lsToken;
-          }
-        } catch (_) {}
-      }
-
-      // 4. If we have a token but no cookies, still proceed
-      if (sessionToken.isEmpty && cookies.isEmpty) {
+      if (unescaped == '[]' || unescaped.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('未获取到认证信息，请先登录，登录后进行一次对话再点击获取'),
+              content: Text('未捕获到API请求。请先登录，然后在对话框发送一条消息，再点击「获取」'),
+              duration: Duration(seconds: 4),
             ),
           );
         }
         return;
       }
 
+      final List<dynamic> requests = jsonDecode(unescaped);
+      if (requests.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未捕获到API请求，请先进行一次对话')),
+          );
+        }
+        return;
+      }
+
+      // Use the last captured request as the template
+      final lastReq = requests.last as Map<String, dynamic>;
+      final apiUrl = lastReq['url']?.toString() ?? '';
+      final headers = lastReq['headers'] as Map<String, dynamic>? ?? {};
+      final bodyTemplate = lastReq['body']?.toString() ?? '';
+
+      // Extract cookies from headers
+      final cookies = headers['cookie']?.toString() ?? '';
+
+      if (apiUrl.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('捕获的请求URL为空，请重试')),
+          );
+        }
+        return;
+      }
+
+      // Build session data with full request info
+      final sessionData = jsonEncode({
+        'apiUrl': apiUrl,
+        'headers': headers,
+        'bodyTemplate': bodyTemplate,
+      });
+
       if (mounted) {
         Navigator.pop(context, {
           'cookies': cookies,
-          'sessionToken': sessionToken.isNotEmpty ? sessionToken : cookies,
+          'sessionToken': sessionData,
           'url': _currentUrl,
         });
       }
@@ -249,7 +229,6 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
       appBar: AppBar(
         title: Text(widget.title),
         actions: [
-          // Status indicator
           Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -259,16 +238,13 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
               ),
             ),
           ),
-          // Refresh
           IconButton(
             onPressed: () {
               _controller.reload();
-              // Re-inject interceptors after reload
               Future.delayed(const Duration(seconds: 2), _injectInterceptors);
             },
             icon: const Icon(Icons.refresh),
           ),
-          // Confirm button
           TextButton.icon(
             onPressed: _extractAndReturn,
             icon: const Icon(Icons.check),
@@ -278,7 +254,6 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
       ),
       body: Column(
         children: [
-          // URL bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -303,11 +278,9 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
               ],
             ),
           ),
-          // WebView
           Expanded(
             child: WebViewWidget(controller: _controller),
           ),
-          // Bottom bar
           Container(
             padding: const EdgeInsets.all(12),
             color: Theme.of(context).colorScheme.primaryContainer,
@@ -319,7 +292,7 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '登录后请进行一次对话，然后点击右上角「获取」按钮',
+                    '登录后发送一条消息，然后点击右上角「获取」',
                     style: TextStyle(
                       fontSize: 13,
                       color: Theme.of(context).colorScheme.primary,

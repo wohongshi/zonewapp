@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../models/settings.dart';
 
@@ -96,17 +97,265 @@ class AiService {
       return AiResponse(content: '', success: false, error: '网页模式未配置');
     }
 
-    // For web mode, we use DeepSeek API as fallback
-    final apiUrl = 'https://api.deepseek.com/v1/chat/completions';
+    final sessionData = _webConfig!.sessionData;
 
+    // Try to parse session data as captured request info
+    Map<String, dynamic>? capturedReq;
+    try {
+      capturedReq = jsonDecode(sessionData);
+    } catch (_) {
+      // Legacy format: sessionData is just a token string
+    }
+
+    if (capturedReq != null && capturedReq.containsKey('apiUrl')) {
+      // New format: replay captured request
+      return await _replayCapturedRequest(prompt, capturedReq);
+    }
+
+    // Legacy fallback: try the old DeepSeek API approach
+    return await _legacyWebRequest(prompt, sessionData);
+  }
+
+  /// Replay a captured web API request with the user's prompt.
+  /// This uses the exact same endpoint, headers, and body format
+  /// that the web app uses, so authentication works naturally.
+  Future<AiResponse> _replayCapturedRequest(
+      String prompt, Map<String, dynamic> captured) async {
+    final apiUrl = captured['apiUrl'] as String? ?? '';
+    final capturedHeaders =
+        captured['headers'] as Map<String, dynamic>? ?? {};
+    final bodyTemplate = captured['bodyTemplate'] as String? ?? '';
+
+    if (apiUrl.isEmpty) {
+      return AiResponse(
+          content: '', success: false, error: '捕获的API URL为空');
+    }
+
+    // Build headers from captured data
+    final headers = <String, String>{};
+    capturedHeaders.forEach((key, value) {
+      if (key.toLowerCase() != 'content-length') {
+        headers[key] = value.toString();
+      }
+    });
+    headers['content-type'] = 'application/json';
+
+    // Try to build request body by replacing the user message in the template
+    dynamic body;
+    try {
+      if (bodyTemplate.isNotEmpty) {
+        // Parse the captured body and replace the user message
+        final templateBody = jsonDecode(bodyTemplate);
+        body = _replacePromptInBody(templateBody, prompt);
+      }
+    } catch (_) {}
+
+    // If we couldn't build from template, try common formats
+    body ??= _buildFallbackBody(prompt, apiUrl);
+
+    try {
+      final response = await _dio.post(
+        apiUrl,
+        options: Options(
+          headers: headers,
+          validateStatus: (status) => true, // Accept any status
+        ),
+        data: body is String ? body : jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        return _parseWebResponse(response);
+      } else if (response.statusCode == 401) {
+        return AiResponse(
+          content: '',
+          success: false,
+          error: '认证失败(401)，请重新登录DeepSeek并进行一次对话后再获取',
+        );
+      } else {
+        return AiResponse(
+          content: '',
+          success: false,
+          error: '网页API请求失败: HTTP ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      return AiResponse(
+        content: '',
+        success: false,
+        error: '网页API请求异常: $e',
+      );
+    }
+  }
+
+  /// Replace the user's prompt in a captured request body.
+  /// Handles various API formats (OpenAI-style, DeepSeek custom, etc.)
+  Map<String, dynamic> _replacePromptInBody(
+      Map<String, dynamic> body, String prompt) {
+    final result = Map<String, dynamic>.from(body);
+
+    // OpenAI / DeepSeek chat format: messages array
+    if (result.containsKey('messages')) {
+      final messages = result['messages'];
+      if (messages is List) {
+        // Find last user message and replace it
+        for (int i = messages.length - 1; i >= 0; i--) {
+          final msg = messages[i];
+          if (msg is Map && msg['role'] == 'user') {
+            messages[i] = {'role': 'user', 'content': prompt};
+            break;
+          }
+        }
+        // If no user message found, add one
+        if (!messages.any((m) => m is Map && m['role'] == 'user')) {
+          messages.add({'role': 'user', 'content': prompt});
+        }
+      }
+      return result;
+    }
+
+    // Other formats: try common field names
+    for (final key in ['prompt', 'query', 'input', 'text', 'content', 'message']) {
+      if (result.containsKey(key)) {
+        result[key] = prompt;
+        return result;
+      }
+    }
+
+    // Fallback: add messages array
+    result['messages'] = [
+      {'role': 'user', 'content': prompt}
+    ];
+    return result;
+  }
+
+  /// Build a fallback request body for common API formats.
+  dynamic _buildFallbackBody(String prompt, String url) {
+    // DeepSeek-style
+    if (url.contains('deepseek')) {
+      return {
+        'messages': [
+          {'role': 'user', 'content': prompt}
+        ],
+        'model': 'deepseek-chat',
+        'stream': false,
+      };
+    }
+    // Generic OpenAI-compatible
+    return {
+      'messages': [
+        {'role': 'user', 'content': prompt}
+      ],
+      'stream': false,
+    };
+  }
+
+  /// Parse various web API response formats into AiResponse.
+  AiResponse _parseWebResponse(Response response) {
+    try {
+      final data = response.data;
+
+      // Handle streaming response (SSE)
+      if (data is String && data.contains('data:')) {
+        return _parseSSEResponse(data);
+      }
+
+      // JSON response
+      if (data is Map<String, dynamic>) {
+        // OpenAI-compatible: choices[0].message.content
+        if (data.containsKey('choices')) {
+          final choices = data['choices'];
+          if (choices is List && choices.isNotEmpty) {
+            final choice = choices[0];
+            if (choice is Map) {
+              // Chat completion format
+              if (choice.containsKey('message')) {
+                final msg = choice['message'];
+                if (msg is Map && msg.containsKey('content')) {
+                  return AiResponse(
+                      content: msg['content'].toString(), success: true);
+                }
+              }
+              // Text completion format
+              if (choice.containsKey('text')) {
+                return AiResponse(
+                    content: choice['text'].toString(), success: true);
+              }
+            }
+          }
+        }
+
+        // DeepSeek custom format
+        if (data.containsKey('result') || data.containsKey('response')) {
+          final content = data['result'] ?? data['response'];
+          return AiResponse(content: content.toString(), success: true);
+        }
+
+        // Generic: try to find any content field
+        for (final key in ['content', 'text', 'output', 'answer']) {
+          if (data.containsKey(key)) {
+            return AiResponse(
+                content: data[key].toString(), success: true);
+          }
+        }
+      }
+
+      return AiResponse(
+        content: data.toString(),
+        success: true,
+      );
+    } catch (e) {
+      return AiResponse(
+        content: '',
+        success: false,
+        error: '解析响应失败: $e',
+      );
+    }
+  }
+
+  /// Parse Server-Sent Events (SSE) streaming response.
+  AiResponse _parseSSEResponse(String sseData) {
+    final buffer = StringBuffer();
+    for (final line in sseData.split('\n')) {
+      if (line.startsWith('data:')) {
+        final jsonStr = line.substring(5).trim();
+        if (jsonStr == '[DONE]') continue;
+        try {
+          final chunk = jsonDecode(jsonStr);
+          // OpenAI streaming format
+          if (chunk is Map && chunk.containsKey('choices')) {
+            final choices = chunk['choices'];
+            if (choices is List && choices.isNotEmpty) {
+              final delta = choices[0]['delta'];
+              if (delta is Map && delta.containsKey('content')) {
+                buffer.write(delta['content']);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+    if (buffer.isNotEmpty) {
+      return AiResponse(content: buffer.toString(), success: true);
+    }
+    return AiResponse(
+      content: '',
+      success: false,
+      error: '无法解析SSE响应',
+    );
+  }
+
+  /// Legacy web request fallback (old approach).
+  Future<AiResponse> _legacyWebRequest(
+      String prompt, String sessionData) async {
+    final apiUrl = 'https://api.deepseek.com/v1/chat/completions';
     try {
       final response = await _dio.post(
         apiUrl,
         options: Options(
           headers: {
             'Content-Type': 'application/json',
-            if (_webConfig!.sessionData.isNotEmpty)
-              'Authorization': 'Bearer ${_webConfig!.sessionData}',
+            if (sessionData.isNotEmpty)
+              'Authorization': 'Bearer $sessionData',
           },
         ),
         data: {

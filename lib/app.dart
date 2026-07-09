@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 
 import 'screens/home/home_screen.dart';
 import 'screens/account/account_screen.dart';
@@ -15,13 +16,17 @@ class ZonewApp extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final themeMode = _getThemeMode(settings.themeMode);
 
-    return MaterialApp(
-      title: 'ZonewApp',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: themeMode,
-      home: const MainScreen(),
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        return MaterialApp(
+          title: 'ZonewApp',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(dynamicScheme: lightDynamic),
+          darkTheme: AppTheme.dark(dynamicScheme: darkDynamic),
+          themeMode: themeMode,
+          home: const MainScreen(),
+        );
+      },
     );
   }
 

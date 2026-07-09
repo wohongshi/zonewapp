@@ -97,7 +97,7 @@ class HomeScreen extends ConsumerWidget {
                       ),
                     ),
                     progressColor: Theme.of(context).colorScheme.primary,
-                    backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                     circularStrokeCap: CircularStrokeCap.round,
                   ),
                   const SizedBox(height: 16),

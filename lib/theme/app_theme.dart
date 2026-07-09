@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 
 class AppTheme {
-  static ThemeData light() {
-    const colorScheme = ColorScheme.light(
-      primary: Color(0xFF1976D2),
-      onPrimary: Colors.white,
-      primaryContainer: Color(0xFFBBDEFB),
-      secondary: Color(0xFF455A64),
-      surface: Colors.white,
-      surfaceVariant: Color(0xFFF5F5F5),
-      outline: Color(0xFFBDBDBD),
-      outlineVariant: Color(0xFFE0E0E0),
-    );
+  static ThemeData light({ColorScheme? dynamicScheme}) {
+    final colorScheme = dynamicScheme ??
+        const ColorScheme.light(
+          primary: Color(0xFF1976D2),
+          onPrimary: Colors.white,
+          primaryContainer: Color(0xFFBBDEFB),
+          secondary: Color(0xFF455A64),
+          surface: Colors.white,
+          surfaceContainerHighest: Color(0xFFF5F5F5),
+          outline: Color(0xFFBDBDBD),
+          outlineVariant: Color(0xFFE0E0E0),
+        );
 
     return ThemeData(
       useMaterial3: true,
@@ -56,17 +58,18 @@ class AppTheme {
     );
   }
 
-  static ThemeData dark() {
-    const colorScheme = ColorScheme.dark(
-      primary: Color(0xFF90CAF9),
-      onPrimary: Color(0xFF0D47A1),
-      primaryContainer: Color(0xFF1565C0),
-      secondary: Color(0xFF90A4AE),
-      surface: Color(0xFF1E1E1E),
-      surfaceVariant: Color(0xFF2C2C2C),
-      outline: Color(0xFF757575),
-      outlineVariant: Color(0xFF424242),
-    );
+  static ThemeData dark({ColorScheme? dynamicScheme}) {
+    final colorScheme = dynamicScheme ??
+        const ColorScheme.dark(
+          primary: Color(0xFF90CAF9),
+          onPrimary: Color(0xFF0D47A1),
+          primaryContainer: Color(0xFF1565C0),
+          secondary: Color(0xFF90A4AE),
+          surface: Color(0xFF1E1E1E),
+          surfaceContainerHighest: Color(0xFF2C2C2C),
+          outline: Color(0xFF757575),
+          outlineVariant: Color(0xFF424242),
+        );
 
     return ThemeData(
       useMaterial3: true,

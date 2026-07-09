@@ -103,7 +103,7 @@ class BackupRestoreScreen extends ConsumerWidget {
 
           // Auto backup info
           Card(
-            color: Theme.of(context).colorScheme.surfaceVariant,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
