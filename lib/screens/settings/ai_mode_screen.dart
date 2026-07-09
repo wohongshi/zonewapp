@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/settings.dart';
 import '../../services/ai_service.dart';
+import 'webview_login_screen.dart';
 
 class AiModeScreen extends ConsumerStatefulWidget {
   const AiModeScreen({super.key});
@@ -331,12 +331,28 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
             const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: () async {
-                final uri = Uri.parse('https://chat.deepseek.com/');
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const WebViewLoginScreen(
+                      url: 'https://chat.deepseek.com/',
+                      title: '登录 DeepSeek',
+                    ),
+                  ),
+                );
+                if (result != null && result is Map<String, String>) {
+                  setState(() {
+                    _webCookiesController.text = result['cookies'] ?? '';
+                    _webSessionController.text = result['sessionToken'] ?? '';
+                  });
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('✅ Cookies 已获取')),
+                    );
+                  }
                 }
               },
-              icon: const Icon(Icons.open_in_new),
+              icon: const Icon(Icons.login),
               label: const Text('登录 DeepSeek'),
             ),
           ],
