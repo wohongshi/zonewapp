@@ -37,9 +37,6 @@ jobs:
       - name: Build Android APK
         run: flutter build apk --release
 
-      - name: Build Android AAB
-        run: flutter build appbundle --release
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         if: success()
@@ -47,9 +44,4 @@ jobs:
           name: android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
 
-      - name: Upload AAB
-        uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: android-aab
-          path: build/app/outputs/bundle/release/app-release.aab
+
