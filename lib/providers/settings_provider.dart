@@ -44,6 +44,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     await _saveSettings();
   }
 
+  Future<void> updatePredictiveBack(bool enabled) async {
+    state = state.copyWith(predictiveBackEnabled: enabled);
+    await _saveSettings();
+  }
+
   Future<void> _saveSettings() async {
     await StorageService.instance.saveSettings(state);
   }

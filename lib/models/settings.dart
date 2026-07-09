@@ -10,6 +10,7 @@ class AppSettings {
   final Map<String, String> subjectContents;
   final bool notificationEnabled;
   final bool webServiceEnabled;
+  final bool predictiveBackEnabled;
 
   AppSettings({
     this.themeMode = 'system',
@@ -18,6 +19,7 @@ class AppSettings {
     this.subjectContents = const {},
     this.notificationEnabled = true,
     this.webServiceEnabled = false,
+    this.predictiveBackEnabled = false,
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => _$AppSettingsFromJson(json);
@@ -30,6 +32,7 @@ class AppSettings {
     Map<String, String>? subjectContents,
     bool? notificationEnabled,
     bool? webServiceEnabled,
+    bool? predictiveBackEnabled,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -38,6 +41,7 @@ class AppSettings {
       subjectContents: subjectContents ?? this.subjectContents,
       notificationEnabled: notificationEnabled ?? this.notificationEnabled,
       webServiceEnabled: webServiceEnabled ?? this.webServiceEnabled,
+      predictiveBackEnabled: predictiveBackEnabled ?? this.predictiveBackEnabled,
     );
   }
 }

@@ -61,25 +61,33 @@ class AppTheme {
     final colorScheme = dynamicScheme ??
         const ColorScheme.dark(
           primary: Color(0xFF90CAF9),
-          onPrimary: Color(0xFF0D47A1),
+          onPrimary: Color(0xFF000000),
           primaryContainer: Color(0xFF1565C0),
+          onPrimaryContainer: Color(0xFFBBDEFB),
           secondary: Color(0xFF90A4AE),
-          surface: Color(0xFF1E1E1E),
-          surfaceContainerHighest: Color(0xFF2C2C2C),
-          outline: Color(0xFF757575),
-          outlineVariant: Color(0xFF424242),
+          onSecondary: Color(0xFF000000),
+          surface: Color(0xFF000000),
+          onSurface: Color(0xFFE0E0E0),
+          surfaceContainerHighest: Color(0xFF111111),
+          onSurfaceVariant: Color(0xFFBDBDBD),
+          outline: Color(0xFF616161),
+          outlineVariant: Color(0xFF303030),
         );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: const Color(0xFF000000),
       appBarTheme: const AppBarTheme(
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 1,
+        backgroundColor: Color(0xFF000000),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
+        color: const Color(0xFF111111),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(color: colorScheme.outlineVariant),
@@ -104,6 +112,7 @@ class AppTheme {
       navigationBarTheme: const NavigationBarThemeData(
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         height: 65,
+        backgroundColor: Color(0xFF000000),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

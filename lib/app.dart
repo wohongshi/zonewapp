@@ -36,7 +36,9 @@ class ZonewApp extends ConsumerWidget {
           theme: theme,
           darkTheme: darkTheme,
           themeMode: themeMode,
-          home: const MainScreen(),
+          home: MainScreen(
+            predictiveBack: settings.predictiveBackEnabled,
+          ),
         );
       },
     );
@@ -57,7 +59,8 @@ class ZonewApp extends ConsumerWidget {
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final bool predictiveBack;
+  const MainScreen({super.key, this.predictiveBack = false});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -80,7 +83,18 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: widget.predictiveBack,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !widget.predictiveBack) {
+          // When predictive back is off, intercept back gesture
+          // On root screen, show exit confirmation
+          if (_currentIndex != 0) {
+            setState(() => _currentIndex = 0);
+          }
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(
           _titles[_currentIndex],
@@ -116,6 +130,7 @@ class _MainScreenState extends State<MainScreen> {
             label: '设置',
           ),
         ],
+      ),
       ),
     );
   }

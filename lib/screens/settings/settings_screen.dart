@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
@@ -18,6 +19,18 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
+  String get _lanIp {
+    try {
+      for (final iface in NetworkInterface.listSync()) {
+        for (final addr in iface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+            return addr.address;
+          }
+        }
+      }
+    } catch (_) {}
+    return 'localhost';
+  }
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
@@ -125,7 +138,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             secondary: const Icon(Icons.language),
             title: const Text('Web服务'),
             subtitle: Text(WebServerService.instance.isRunning
-                ? '运行中 - http://localhost:35535'
+                ? '运行中 - $_lanIp:35535'
                 : '未运行'),
             value: WebServerService.instance.isRunning,
             onChanged: (value) async {
@@ -135,6 +148,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 await WebServerService.instance.stop();
               }
               setState(() {});
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // Predictive Back
+        Card(
+          child: SwitchListTile(
+            secondary: const Icon(Icons.swipe),
+            title: const Text('手势预测返回'),
+            subtitle: const Text('Android 预测性返回动画（需重启生效）'),
+            value: settings.predictiveBackEnabled,
+            onChanged: (value) {
+              ref.read(settingsProvider.notifier).updatePredictiveBack(value);
             },
           ),
         ),

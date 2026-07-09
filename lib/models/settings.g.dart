@@ -16,6 +16,7 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
           {},
       notificationEnabled: json['notificationEnabled'] as bool? ?? true,
       webServiceEnabled: json['webServiceEnabled'] as bool? ?? false,
+      predictiveBackEnabled: json['predictiveBackEnabled'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
@@ -26,6 +27,7 @@ Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
       'subjectContents': instance.subjectContents,
       'notificationEnabled': instance.notificationEnabled,
       'webServiceEnabled': instance.webServiceEnabled,
+      'predictiveBackEnabled': instance.predictiveBackEnabled,
     };
 
 ApiConfig _$ApiConfigFromJson(Map<String, dynamic> json) => ApiConfig(
