@@ -27,7 +27,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
     final templateData = settings.aiConfig?['taskTemplates'];
 
     if (templateData != null && templateData is List) {
-      _templates = (templateData as List)
+      _templates = templateData
           .map((e) => TaskTemplate.fromJson(Map<String, dynamic>.from(e)))
           .toList();
     } else {

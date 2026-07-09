@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/task_template.dart';
+import '../../models/task_template.dart';
 
 /// Screen for editing a single task template.
 class TemplateEditorScreen extends StatefulWidget {
