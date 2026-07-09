@@ -57,38 +57,43 @@ class _AccountScreenState extends ConsumerState<AccountScreen> with SingleTicker
   }
 
   Widget _buildAccountList(List<Account> accounts, String status) {
-    if (accounts.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.people_outline,
-              size: 64,
-              color: Theme.of(context).colorScheme.outline,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '暂无$status账号',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return Stack(
       children: [
-        ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: accounts.length,
-          itemBuilder: (context, index) {
-            final account = accounts[index];
-            return _buildAccountCard(account);
-          },
-        ),
+        if (accounts.isEmpty)
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.people_outline,
+                  size: 64,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '暂无$status账号',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () => _addAccount(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('添加账号'),
+                ),
+              ],
+            ),
+          )
+        else
+          ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: accounts.length,
+            itemBuilder: (context, index) {
+              final account = accounts[index];
+              return _buildAccountCard(account);
+            },
+          ),
         Positioned(
           right: 16,
           bottom: 16,
