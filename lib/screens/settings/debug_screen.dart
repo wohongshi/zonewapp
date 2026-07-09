@@ -6,6 +6,7 @@ import '../../providers/account_provider.dart';
 import '../../services/ai_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/web_server_service.dart';
+import '../../models/settings.dart';
 import '../../utils/constants.dart';
 
 class DebugScreen extends ConsumerStatefulWidget {
