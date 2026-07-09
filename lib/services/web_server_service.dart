@@ -35,14 +35,14 @@ class WebServerService {
     // Generate a token if one doesn't exist
     _accessToken ??= generateToken();
 
-    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+    _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
     _isRunning = true;
 
-    debugPrint('Web server running on http://127.0.0.1:$port');
+    debugPrint('Web server running on http://0.0.0.0:$port');
 
     _server!.listen((HttpRequest request) async {
       // CORS headers - restrict to localhost origins only
-      request.response.headers.set('Access-Control-Allow-Origin', 'http://127.0.0.1:$port');
+      request.response.headers.set('Access-Control-Allow-Origin', '*');
       request.response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       request.response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
