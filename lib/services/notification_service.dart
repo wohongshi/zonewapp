@@ -10,16 +10,20 @@ class NotificationService {
 
   Future<void> init() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const windowsSettings = WindowsInitializationSettings(
-      appName: 'ZonewApp',
-      appUserModelId: 'com.hongshi.zonewapp',
-      guid: 'zonewapp-guid',
-    );
-
-    const initSettings = InitializationSettings(
-      android: androidSettings,
-      windows: windowsSettings,
-    );
+    
+    // Windows initialization only on Windows platform
+    InitializationSettings initSettings;
+    if (Platform.isWindows) {
+      // Windows not fully supported in flutter_local_notifications yet
+      // Use Android-only initialization
+      initSettings = const InitializationSettings(
+        android: androidSettings,
+      );
+    } else {
+      initSettings = const InitializationSettings(
+        android: androidSettings,
+      );
+    }
 
     await _notifications.initialize(
       initSettings,
@@ -58,12 +62,7 @@ class NotificationService {
       largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
     );
 
-    final windowsDetails = WindowsNotificationDetails();
-
-    final details = NotificationDetails(
-      android: androidDetails,
-      windows: windowsDetails,
-    );
+    final details = NotificationDetails(android: androidDetails);
 
     await _notifications.show(
       0,
@@ -88,12 +87,7 @@ class NotificationService {
       icon: '@mipmap/ic_launcher',
     );
 
-    const windowsDetails = WindowsNotificationDetails();
-
-    const details = NotificationDetails(
-      android: androidDetails,
-      windows: windowsDetails,
-    );
+    const details = NotificationDetails(android: androidDetails);
 
     await _notifications.show(
       1,
@@ -117,12 +111,7 @@ class NotificationService {
       icon: '@mipmap/ic_launcher',
     );
 
-    const windowsDetails = WindowsNotificationDetails();
-
-    const details = NotificationDetails(
-      android: androidDetails,
-      windows: windowsDetails,
-    );
+    const details = NotificationDetails(android: androidDetails);
 
     await _notifications.show(
       2,

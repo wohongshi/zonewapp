@@ -3,10 +3,14 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
-import 'package:shelf_web_socket/shelf_web_socket.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+
 import '../services/storage_service.dart';
 import '../models/account.dart';
+
+class _WsClient {
+  final Socket socket;
+  _WsClient(this.socket);
+}
 
 class WebServerService {
   static final WebServerService instance = WebServerService._();
@@ -14,7 +18,6 @@ class WebServerService {
 
   HttpServer? _server;
   bool _isRunning = false;
-  final List<WebSocketChannel> _clients = [];
 
   bool get isRunning => _isRunning;
 
@@ -29,17 +32,11 @@ class WebServerService {
     _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
     _isRunning = true;
 
-    debugPrint('Web server running on http://${_server!.address.host}:$port');
+    debugPrint('Web server running on http://…:$port');
   }
 
   Future<void> stop() async {
     if (!_isRunning) return;
-
-    for (final client in _clients) {
-      await client.sink.close();
-    }
-    _clients.clear();
-
     await _server?.close(force: true);
     _server = null;
     _isRunning = false;
@@ -67,18 +64,6 @@ class WebServerService {
   Future<Response> _handleRequest(Request request) async {
     final path = request.url.path;
 
-    // WebSocket for real-time updates
-    if (path == 'ws') {
-      return webSocketHandler((WebSocketChannel webSocket) {
-        _clients.add(webSocket);
-        webSocket.stream.listen(
-          (message) => _handleWebSocketMessage(webSocket, message),
-          onDone: () => _clients.remove(webSocket),
-        );
-      })(request);
-    }
-
-    // API routes
     switch (path) {
       case '':
       case 'index.html':
@@ -89,6 +74,8 @@ class WebServerService {
         return await _handleStatus();
       case 'api/settings':
         return await _handleSettings(request);
+      case 'api/poll':
+        return await _handleStatus(); // Simple polling endpoint
       default:
         if (path.startsWith('api/accounts/')) {
           final id = path.replaceFirst('api/accounts/', '');
@@ -137,10 +124,9 @@ class WebServerService {
         .badge.error { background: #ffebee; color: #c62828; }
         .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
         .btn-primary { background: #1976d2; color: white; }
-        .btn-danger { background: #d32f2f; color: white; }
         .form-group { margin-bottom: 16px; }
         .form-group label { display: block; margin-bottom: 4px; font-weight: 500; }
-        .form-group input, .form-group select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .form-group input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
         .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100; }
         .modal.active { display: flex; align-items: center; justify-content: center; }
         .modal-content { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
@@ -148,12 +134,12 @@ class WebServerService {
 </head>
 <body>
     <div class="header">
-        <img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'/></svg>" width="32" height="32">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
         <h1>ZonewApp Web Control</h1>
     </div>
     <div class="nav">
-        <button class="active" onclick="showPage('home')">主页</button>
-        <button onclick="showPage('account')">账号</button>
+        <button class="active" onclick="showPage('home',this)">主页</button>
+        <button onclick="showPage('account',this)">账号</button>
     </div>
     <div class="container">
         <div id="home-page">
@@ -212,53 +198,42 @@ class WebServerService {
         </div>
     </div>
     <script>
-        let ws;
-        function connectWS() {
-            ws = new WebSocket('ws://' + location.host + '/ws');
-            ws.onmessage = (e) => { loadData(); };
-            ws.onclose = () => setTimeout(connectWS, 3000);
-        }
-        connectWS();
-
-        function showPage(page) {
+        function showPage(page, btn) {
             document.getElementById('home-page').style.display = page === 'home' ? 'block' : 'none';
             document.getElementById('account-page').style.display = page === 'account' ? 'block' : 'none';
             document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
+            btn.classList.add('active');
             loadData();
         }
 
         async function loadData() {
-            const status = await (await fetch('/api/status')).json();
-            if (status.success) {
-                const d = status.data;
-                document.getElementById('total-accounts').textContent = d.total_accounts;
-                document.getElementById('completed-accounts').textContent = d.completed;
-                document.getElementById('incomplete-accounts').textContent = d.incomplete;
-                document.getElementById('error-accounts').textContent = d.error;
-            }
+            try {
+                const status = await (await fetch('/api/status')).json();
+                if (status.success) {
+                    const d = status.data;
+                    document.getElementById('total-accounts').textContent = d.total_accounts;
+                    document.getElementById('completed-accounts').textContent = d.completed;
+                    document.getElementById('incomplete-accounts').textContent = d.incomplete;
+                    document.getElementById('error-accounts').textContent = d.error;
+                }
 
-            const accounts = await (await fetch('/api/accounts')).json();
-            if (accounts.success) renderAccounts(accounts.data);
+                const accounts = await (await fetch('/api/accounts')).json();
+                if (accounts.success) renderAccounts(accounts.data);
+            } catch(e) { console.error(e); }
         }
 
         function renderAccounts(accounts) {
             const list = document.getElementById('account-list');
-            list.innerHTML = accounts.map(a => `
-                <li class="account-item">
-                    <div class="account-info">
-                        <div class="name">\${a.username}</div>
-                        <div class="status">班主任: \${a.teacher_name} | 创建: \${a.created_at.split('T')[0]}</div>
-                    </div>
-                    <span class="badge \${a.status === '已完成' ? 'completed' : a.status === '状态异常' ? 'error' : 'incomplete'}">\${a.status}</span>
-                </li>
-            `).join('');
+            list.innerHTML = accounts.map(function(a) {
+                var cls = a.status === '已完成' ? 'completed' : a.status === '状态异常' ? 'error' : 'incomplete';
+                return '<li class="account-item"><div class="account-info"><div class="name">' + a.username + '</div><div class="status">班主任: ' + a.teacher_name + ' | 创建: ' + a.created_at.split('T')[0] + '</div></div><span class="badge ' + cls + '">' + a.status + '</span></li>';
+            }).join('');
 
-            const grid = document.getElementById('progress-grid');
-            const items = ['材料排序','任职情况','奖惩情况','体育锻炼','心理素质','陈述报告','党团活动','志愿服务','艺术素养','劳动实践','课题研究','项目设计'];
-            grid.innerHTML = items.map((name, i) => {
-                const status = accounts.length > 0 ? (i < 4 ? 'green' : i < 8 ? 'blue' : 'red') : 'red';
-                return '<div class="progress-item ' + status + '">' + name + '</div>';
+            var grid = document.getElementById('progress-grid');
+            var items = ['材料排序','任职情况','奖惩情况','体育锻炼','心理素质','陈述报告','党团活动','志愿服务','艺术素养','劳动实践','课题研究','项目设计'];
+            grid.innerHTML = items.map(function(name, i) {
+                var s = accounts.length > 0 ? (i < 4 ? 'green' : i < 8 ? 'blue' : 'red') : 'red';
+                return '<div class="progress-item ' + s + '">' + name + '</div>';
             }).join('');
         }
 
@@ -266,7 +241,7 @@ class WebServerService {
         function closeModal() { document.getElementById('add-modal').classList.remove('active'); }
 
         async function addAccount() {
-            const account = {
+            var account = {
                 id: crypto.randomUUID(),
                 username: document.getElementById('input-username').value,
                 password: document.getElementById('input-password').value,
@@ -302,7 +277,6 @@ class WebServerService {
       final data = jsonDecode(body);
       final account = Account.fromJson(data);
       await StorageService.instance.addAccount(account);
-      _broadcastUpdate();
       return Response.ok(
         jsonEncode({'success': true}),
         headers: {'content-type': 'application/json'},
@@ -314,7 +288,6 @@ class WebServerService {
   Future<Response> _handleAccountById(Request request, String id) async {
     if (request.method == 'DELETE') {
       await StorageService.instance.deleteAccount(id);
-      _broadcastUpdate();
       return Response.ok(jsonEncode({'success': true}), headers: {'content-type': 'application/json'});
     }
     return Response.badRequest();
@@ -350,15 +323,5 @@ class WebServerService {
       );
     }
     return Response.badRequest();
-  }
-
-  void _handleWebSocketMessage(WebSocketChannel client, dynamic message) {
-    debugPrint('WebSocket message: $message');
-  }
-
-  void _broadcastUpdate() {
-    for (final client in _clients) {
-      client.sink.add('update');
-    }
   }
 }
