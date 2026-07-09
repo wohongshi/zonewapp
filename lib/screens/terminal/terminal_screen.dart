@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
@@ -22,7 +23,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     super.initState();
     _terminal = Terminal(
       maxLines: 5000,
-      platform: PlatformBehaviors.android,
+      platform: TargetPlatform.android,
     );
     _controller = TerminalController();
 
@@ -106,7 +107,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 green: Colors.green,
                 yellow: Colors.yellow,
                 blue: Colors.blue,
-                magenta: Colors.magenta,
+                magenta: Colors.purple,
                 cyan: Colors.cyan,
                 white: Colors.white,
                 brightBlack: Colors.grey,

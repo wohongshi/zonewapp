@@ -21,7 +21,7 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
   bool _isLoading = true;
   String _currentUrl = '';
   String _status = '加载中...';
-  bool _hasCapturedRequest = false;
+  final bool _hasCapturedRequest = false;
 
   @override
   void initState() {
