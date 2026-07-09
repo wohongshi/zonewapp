@@ -15,8 +15,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  int _avatarTapCount = 0;
-  bool _secretUnlocked = false;
 
   @override
   Widget build(BuildContext context) {
@@ -102,49 +100,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         const SizedBox(height: 8),
 
-        // Web Service (hidden feature)
-        if (_secretUnlocked) ...[
-          Card(
-            child: SwitchListTile(
-              secondary: const Icon(Icons.language),
-              title: const Text('Web服务'),
-              subtitle: Text(WebServerService.instance.isRunning
-                  ? '运行中 - http://localhost:35535'
-                  : '未运行'),
-              value: WebServerService.instance.isRunning,
-              onChanged: (value) async {
-                if (value) {
-                  await WebServerService.instance.start();
-                } else {
-                  await WebServerService.instance.stop();
-                }
-                setState(() {});
-              },
-            ),
+        // Web Service
+        Card(
+          child: SwitchListTile(
+            secondary: const Icon(Icons.language),
+            title: const Text('Web服务'),
+            subtitle: Text(WebServerService.instance.isRunning
+                ? '运行中 - http://localhost:35535'
+                : '未运行'),
+            value: WebServerService.instance.isRunning,
+            onChanged: (value) async {
+              if (value) {
+                await WebServerService.instance.start();
+              } else {
+                await WebServerService.instance.stop();
+              }
+              setState(() {});
+            },
           ),
-          const SizedBox(height: 8),
-        ],
+        ),
+        const SizedBox(height: 8),
 
         // About
         Card(
           child: ListTile(
-            leading: GestureDetector(
-              onTap: () {
-                _avatarTapCount++;
-                if (_avatarTapCount >= 5) {
-                  setState(() {
-                    _secretUnlocked = true;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('隐藏功能已开启')),
-                  );
-                  _avatarTapCount = 0;
-                }
-              },
-              child: const CircleAvatar(
-                radius: 16,
-                child: Icon(Icons.info, size: 20),
-              ),
+            leading: const CircleAvatar(
+              radius: 16,
+              child: Icon(Icons.info, size: 20),
             ),
             title: const Text('关于'),
             subtitle: const Text('软件信息'),

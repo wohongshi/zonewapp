@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/settings.dart';
 import '../../services/ai_service.dart';
@@ -329,8 +330,11 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: () {
-                // Open DeepSeek website for login
+              onPressed: () async {
+                final uri = Uri.parse('https://chat.deepseek.com/');
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
               },
               icon: const Icon(Icons.open_in_new),
               label: const Text('登录 DeepSeek'),
