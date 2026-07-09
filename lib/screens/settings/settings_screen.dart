@@ -4,6 +4,7 @@ import '../../providers/settings_provider.dart';
 import '../../services/web_server_service.dart';
 import 'ai_mode_screen.dart';
 import '../terminal/free_ai_screen.dart';
+import 'template_list_screen.dart';
 import 'content_settings_screen.dart';
 import 'backup_restore_screen.dart';
 import 'about_screen.dart';
@@ -84,6 +85,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ContentSettingsScreen()),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // Template config
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.view_list, color: Theme.of(context).colorScheme.primary),
+            title: const Text('综评项目配置'),
+            subtitle: const Text('配置12个综评项目的页面URL和表单选择器'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const TemplateListScreen()),
               );
             },
           ),
