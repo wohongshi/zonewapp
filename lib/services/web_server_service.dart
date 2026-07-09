@@ -201,19 +201,67 @@ class WebServerService {
         </div>
     </div>
     <div class="modal" id="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-height:90vh;overflow-y:auto">
             <h3 style="margin-bottom:16px">添加账号</h3>
             <div class="form-group"><label>账号</label><input type="text" id="u" placeholder="请输入账号"></div>
             <div class="form-group"><label>密码</label><input type="password" id="p" placeholder="请输入密码"></div>
             <div class="form-group"><label>班主任姓名</label><input type="text" id="t" placeholder="请输入班主任姓名"></div>
-            <div style="display:flex;gap:8px;justify-content:flex-end">
+            <div class="form-group">
+                <label>选科（选择3项）</label>
+                <div id="subjects-wrap" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+                <div id="subjects-error" style="color:#c62828;font-size:12px;margin-top:4px;display:none">请选择3个科目</div>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;justify-content:space-between;align-items:center">任职情况 <button class="btn" style="padding:4px 12px;font-size:12px" onclick="addPosition()">+ 添加</button></label>
+                <ul id="positions-list" style="list-style:none;padding:0;margin-top:8px"></ul>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;justify-content:space-between;align-items:center">奖惩情况 <button class="btn" style="padding:4px 12px;font-size:12px" onclick="addReward()">+ 添加</button></label>
+                <ul id="rewards-list" style="list-style:none;padding:0;margin-top:8px"></ul>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
                 <button class="btn" onclick="closeModal()">取消</button>
                 <button class="btn btn-primary" onclick="addAcc()">添加</button>
             </div>
         </div>
     </div>
+    <div class="modal" id="pos-modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:16px">添加任职</h3>
+            <div class="form-group"><label>职务</label><input type="text" id="pos-title" placeholder="如：班长、课代表"></div>
+            <div class="form-group"><label>职务描述</label><textarea id="pos-desc" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px" placeholder="描述你的职责"></textarea></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn" onclick="closePosModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmPos()">添加</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="rew-modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:16px">添加奖惩</h3>
+            <div class="form-group"><label>奖惩名称</label><input type="text" id="rew-title" placeholder="如：三好学生"></div>
+            <div class="form-group">
+                <label>奖励等级</label>
+                <select id="rew-level" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px">
+                    <option value="校级_学校">校级_学校</option>
+                    <option value="县级_行政部门">县级_行政部门</option>
+                    <option value="市级_行政部门">市级_行政部门</option>
+                    <option value="省级_行政部门">省级_行政部门</option>
+                    <option value="国家级_行政部门">国家级_行政部门</option>
+                </select>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn" onclick="closeRewModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmRew()">添加</button>
+            </div>
+        </div>
+    </div>
     <script>
         var TOKEN = '$_accessToken';
+        var selectedSubjects = [];
+        var positions = [];
+        var rewards = [];
+        var SUBJECTS = ['物理','化学','生物','政治','历史','地理'];
         function authHeaders(){
             return TOKEN ? {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'} : {'Content-Type': 'application/json'};
         }
@@ -240,7 +288,7 @@ class WebServerService {
             var list=document.getElementById('accounts');
             list.innerHTML=accs.map(function(a){
                 var c=a.status==='已完成'?'completed':a.status==='状态异常'?'error':'incomplete';
-                return '<li class="account-item"><div class="account-info"><div class="name">'+a.username+'</div><div class="status">班主任: '+a.teacher_name+'</div></div><span class="badge '+c+'">'+a.status+'</span></li>';
+                return '<li class="account-item"><div class="account-info"><div class="name">'+a.username+'</div><div class="status">班主任: '+a.teacher_name+' | 选科: '+(a.subjects||[]).join('/')+'</div></div><span class="badge '+c+'">'+a.status+'</span></li>';
             }).join('');
             var items=['材料排序','任职情况','奖惩情况','体育锻炼','心理素质','陈述报告','党团活动','志愿服务','艺术素养','劳动实践','课题研究','项目设计'];
             document.getElementById('progress').innerHTML=items.map(function(n,i){
@@ -248,10 +296,59 @@ class WebServerService {
                 return '<div class="progress-item '+s+'">'+n+'</div>';
             }).join('');
         }
-        function showAdd(){document.getElementById('modal').classList.add('active')}
+        function renderSubjects(){
+            var wrap=document.getElementById('subjects-wrap');
+            wrap.innerHTML=SUBJECTS.map(function(s){
+                var sel=selectedSubjects.indexOf(s)>=0;
+                return '<label style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border:1px solid '+(sel?'#1976d2':'#ddd')+';border-radius:16px;cursor:pointer;background:'+(sel?'#e3f2fd':'white')+';color:'+(sel?'#1976d2':'#333')+';font-size:13px"><input type="checkbox" value="'+s+'" '+(sel?'checked':'')+' onchange="toggleSubject(this)" style="display:none">'+s+'</label>';
+            }).join('');
+        }
+        function toggleSubject(cb){
+            var v=cb.value;
+            var i=selectedSubjects.indexOf(v);
+            if(i>=0){selectedSubjects.splice(i,1)}
+            else if(selectedSubjects.length<3){selectedSubjects.push(v)}
+            renderSubjects();
+        }
+        function renderPositions(){
+            document.getElementById('positions-list').innerHTML=positions.map(function(p,i){
+                return '<li style="padding:8px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center"><div><b>'+p.title+'</b><br><span style="font-size:12px;color:#666">'+p.description+'</span></div><button class="btn" style="padding:2px 8px;font-size:12px;color:#c62828" onclick="positions.splice('+i+',1);renderPositions()">删除</button></li>';
+            }).join('');
+        }
+        function renderRewards(){
+            document.getElementById('rewards-list').innerHTML=rewards.map(function(r,i){
+                return '<li style="padding:8px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center"><div><b>'+r.title+'</b><br><span style="font-size:12px;color:#666">'+r.level+'</span></div><button class="btn" style="padding:2px 8px;font-size:12px;color:#c62828" onclick="rewards.splice('+i+',1);renderRewards()">删除</button></li>';
+            }).join('');
+        }
+        function addPosition(){document.getElementById('pos-modal').classList.add('active')}
+        function closePosModal(){document.getElementById('pos-modal').classList.remove('active')}
+        function confirmPos(){
+            var t=document.getElementById('pos-title').value;
+            var d=document.getElementById('pos-desc').value;
+            if(t){positions.push({id:crypto.randomUUID(),title:t,description:d});renderPositions()}
+            document.getElementById('pos-title').value='';document.getElementById('pos-desc').value='';
+            closePosModal();
+        }
+        function addReward(){document.getElementById('rew-modal').classList.add('active')}
+        function closeRewModal(){document.getElementById('rew-modal').classList.remove('active')}
+        function confirmRew(){
+            var t=document.getElementById('rew-title').value;
+            var l=document.getElementById('rew-level').value;
+            if(t){rewards.push({id:crypto.randomUUID(),title:t,level:l,department:l,imagePath:null});renderRewards()}
+            document.getElementById('rew-title').value='';
+            closeRewModal();
+        }
+        function showAdd(){
+            selectedSubjects=[];positions=[];rewards=[];
+            document.getElementById('u').value='';document.getElementById('p').value='';document.getElementById('t').value='';
+            renderSubjects();renderPositions();renderRewards();
+            document.getElementById('subjects-error').style.display='none';
+            document.getElementById('modal').classList.add('active');
+        }
         function closeModal(){document.getElementById('modal').classList.remove('active')}
         async function addAcc(){
-            var a={id:crypto.randomUUID(),username:document.getElementById('u').value,password:document.getElementById('p').value,teacher_name:document.getElementById('t').value,subjects:[],positions:[],rewards:[],status:'未完成',created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+            if(selectedSubjects.length!==3){document.getElementById('subjects-error').style.display='block';return}
+            var a={id:crypto.randomUUID(),username:document.getElementById('u').value,password:document.getElementById('p').value,teacher_name:document.getElementById('t').value,subjects:selectedSubjects,positions:positions,rewards:rewards,status:'未完成',created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
             await fetch('/api/accounts',{method:'POST',headers:authHeaders(),body:JSON.stringify(a)});
             closeModal();load();
         }
