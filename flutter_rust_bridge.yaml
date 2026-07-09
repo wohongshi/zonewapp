@@ -1,0 +1,11 @@
+# Rust Bridge Configuration
+rust:
+  rust_input: rust/src/lib.rs
+  dart_output: lib/src/rust/frb_generated.dart
+  dart_preamble: |
+    // ignore_for_file: camel_case_types, non_constant_identifier_names, avoid_positional_boolean_parameters, annotate_overrides, constant_identifier_names
+  rust_preamble: |
+    #![allow(unused_imports, dead_code, clippy::all)]
+  dart_format_line_length: 120
+  rust_format_line_length: 100
+  wasm: false
