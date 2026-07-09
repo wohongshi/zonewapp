@@ -5,15 +5,16 @@ import 'package:webview_flutter/webview_flutter.dart';
 /// Represents a form field extracted from a web page.
 class ScrapedField {
   final String selector;
-  final String tagName; // input, textarea, select
-  final String type; // text, number, date, etc.
+  final String tagName; // input, textarea, select, button, a
+  final String type; // text, number, date, button, submit...
   final String? id;
   final String? name;
   final String? label;
   final String? placeholder;
   final String currentValue;
   final bool isVisible;
-  final List<ScrapedOption>? options; // For select elements
+  final bool isClickable;
+  final List<ScrapedOption>? options;
 
   ScrapedField({
     required this.selector,
@@ -25,6 +26,7 @@ class ScrapedField {
     this.placeholder,
     this.currentValue = '',
     this.isVisible = true,
+    this.isClickable = false,
     this.options,
   });
 
@@ -41,12 +43,13 @@ class ScrapedField {
         'placeholder': placeholder,
         'currentValue': currentValue,
         'isVisible': isVisible,
+        'isClickable': isClickable,
         'options': options?.map((o) => o.toJson()).toList(),
       };
 
   @override
   String toString() =>
-      'ScrapedField($displayName, selector=$selector, value=$currentValue)';
+      'ScrapedField($displayName, selector=$selector, clickable=$isClickable)';
 }
 
 class ScrapedOption {
@@ -58,7 +61,7 @@ class ScrapedOption {
   Map<String, dynamic> toJson() => {'value': value, 'text': text};
 }
 
-/// Scrapes form fields from a WebView page.
+/// Scrapes form fields and clickable elements from a WebView page.
 class FormScraperService {
   static final FormScraperService instance = FormScraperService._();
   FormScraperService._();
@@ -71,13 +74,12 @@ class FormScraperService {
 
   String _escapeJs(String value) => jsonEncode(value);
 
-  /// Scrape all visible form fields from the current page.
+  /// Scrape all visible form fields and clickable elements.
   Future<List<ScrapedField>> scrapeFormFields() async {
     if (_controller == null) return [];
-
     try {
-      final js = _buildScrapeScript();
-      final result = await _controller!.runJavaScriptReturningResult(js);
+      final result =
+          await _controller!.runJavaScriptReturningResult(_buildScrapeScript());
       return _parseScrapeResult(result.toString());
     } catch (e) {
       debugPrint('[FormScraper] Error: $e');
@@ -85,7 +87,7 @@ class FormScraperService {
     }
   }
 
-  /// Get a text summary of all form fields (for AI context).
+  /// Text summary for AI context.
   Future<String> getFormFieldsSummary() async {
     final fields = await scrapeFormFields();
     if (fields.isEmpty) return '未找到表单字段';
@@ -94,41 +96,45 @@ class FormScraperService {
     buffer.writeln('页面表单字段列表：');
     for (int i = 0; i < fields.length; i++) {
       final f = fields[i];
-      buffer.write('${i + 1}. ${f.displayName}');
-      if (f.tagName == 'select' && f.options != null) {
-        buffer.write(' [选项: ${f.options!.map((o) => o.text).join(", ")}]');
+      if (f.isClickable) {
+        buffer.writeln('${i + 1}. [按钮] ${f.displayName} (选择器: ${f.selector})');
+      } else {
+        buffer.write('${i + 1}. ${f.displayName} (${f.tagName}');
+        if (f.type != 'text') buffer.write(', ${f.type}');
+        buffer.write(')');
+        if (f.tagName == 'select' && f.options != null) {
+          buffer.write(' 可选值: ${f.options!.map((o) => o.text).join(", ")}');
+        }
+        if (f.currentValue.isNotEmpty) {
+          buffer.write(' [当前: ${f.currentValue}]');
+        }
+        buffer.writeln(' (选择器: ${f.selector})');
       }
-      if (f.currentValue.isNotEmpty) {
-        buffer.write(' [当前值: ${f.currentValue}]');
-      }
-      buffer.writeln(' (选择器: ${f.selector})');
     }
     return buffer.toString();
   }
 
-  /// Fill a specific field by selector with a value.
+  /// Fill a text/number/textarea field.
   Future<bool> fillField(String selector, String value) async {
     if (_controller == null) return false;
     try {
-      final safeSelector = _escapeJs(selector);
-      final safeValue = _escapeJs(value);
+      final s = _escapeJs(selector);
+      final v = _escapeJs(value);
       await _controller!.runJavaScript('''
-        var el = document.querySelector($safeSelector);
+        var el = document.querySelector($s);
         if (el) {
           var tag = el.tagName.toLowerCase();
           if (tag === 'select') {
-            el.value = $safeValue;
+            el.value = $v;
             el.dispatchEvent(new Event('change', { bubbles: true }));
           } else {
-            el.value = $safeValue;
+            el.value = $v;
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
             el.dispatchEvent(new Event('blur', { bubbles: true }));
           }
           true;
-        } else {
-          false;
-        }
+        } else { false; }
       ''');
       return true;
     } catch (e) {
@@ -137,13 +143,61 @@ class FormScraperService {
     }
   }
 
-  /// Click a button/element by selector.
+  /// Select dropdown option by visible text.
+  Future<bool> selectOptionByText(String selector, String optionText) async {
+    if (_controller == null) return false;
+    try {
+      final s = _escapeJs(selector);
+      final t = _escapeJs(optionText);
+      await _controller!.runJavaScript('''
+        var el = document.querySelector($s);
+        if (el && el.tagName.toLowerCase() === 'select') {
+          for (var i = 0; i < el.options.length; i++) {
+            if (el.options[i].text.trim() === $t || el.options[i].value === $t) {
+              el.selectedIndex = i;
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              break;
+            }
+          }
+          true;
+        } else { false; }
+      ''');
+      return true;
+    } catch (e) {
+      debugPrint('[FormScraper] Select error: $e');
+      return false;
+    }
+  }
+
+  /// Set a date input value (format: yyyy-MM-dd).
+  Future<bool> setDateField(String selector, String dateValue) async {
+    if (_controller == null) return false;
+    try {
+      final s = _escapeJs(selector);
+      final d = _escapeJs(dateValue);
+      await _controller!.runJavaScript('''
+        var el = document.querySelector($s);
+        if (el) {
+          el.value = $d;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          true;
+        } else { false; }
+      ''');
+      return true;
+    } catch (e) {
+      debugPrint('[FormScraper] setDate error: $e');
+      return false;
+    }
+  }
+
+  /// Click any element by selector.
   Future<bool> clickElement(String selector) async {
     if (_controller == null) return false;
     try {
-      final safeSelector = _escapeJs(selector);
+      final s = _escapeJs(selector);
       await _controller!.runJavaScript('''
-        var el = document.querySelector($safeSelector);
+        var el = document.querySelector($s);
         if (el) { el.click(); true; } else { false; }
       ''');
       return true;
@@ -153,31 +207,28 @@ class FormScraperService {
     }
   }
 
-  /// Build JavaScript to scrape all form fields.
+  /// JavaScript to scrape form fields + clickable elements.
   String _buildScrapeScript() {
     return '''
     (function() {
       var fields = [];
-      var elements = document.querySelectorAll('input, textarea, select');
 
-      for (var i = 0; i < elements.length; i++) {
-        var el = elements[i];
+      // 1. Scrape form inputs (input, textarea, select)
+      var inputs = document.querySelectorAll('input, textarea, select');
+      for (var i = 0; i < inputs.length; i++) {
+        var el = inputs[i];
         var rect = el.getBoundingClientRect();
         var style = window.getComputedStyle(el);
-
-        // Skip hidden fields
         if (style.display === 'none' || style.visibility === 'hidden' ||
             rect.width === 0 || rect.height === 0) continue;
-        if (el.type === 'hidden' || el.type === 'submit' || el.type === 'button') continue;
+        if (el.type === 'hidden') continue;
 
-        // Build unique selector
         var selector = '';
         if (el.id) {
           selector = '#' + CSS.escape(el.id);
         } else if (el.name) {
           selector = el.tagName.toLowerCase() + '[name="' + el.name + '"]';
         } else {
-          // Build nth-of-type path
           var parent = el.parentElement;
           if (parent) {
             var siblings = parent.querySelectorAll(el.tagName.toLowerCase());
@@ -196,28 +247,18 @@ class FormScraperService {
         }
         if (!selector) continue;
 
-        // Get label
         var label = '';
         if (el.id) {
-          var labelEl = document.querySelector('label[for="' + el.id + '"]');
-          if (labelEl) label = labelEl.innerText.trim();
+          var lbl = document.querySelector('label[for="' + el.id + '"]');
+          if (lbl) label = lbl.innerText.trim();
         }
-        if (!label) {
-          var parentLabel = el.closest('label');
-          if (parentLabel) label = parentLabel.innerText.trim();
-        }
-        if (!label) {
-          // Try previous sibling or parent text
-          var prev = el.previousElementSibling;
-          if (prev && prev.tagName === 'LABEL') label = prev.innerText.trim();
-        }
+        if (!label) { var pl = el.closest('label'); if (pl) label = pl.innerText.trim(); }
+        if (!label) { var prev = el.previousElementSibling; if (prev && prev.tagName === 'LABEL') label = prev.innerText.trim(); }
 
-        // Get options for select
         var options = [];
         if (el.tagName.toLowerCase() === 'select') {
           for (var k = 0; k < el.options.length; k++) {
-            var opt = el.options[k];
-            options.push({ value: opt.value, text: opt.innerText.trim() });
+            options.push({ value: el.options[k].value, text: el.options[k].innerText.trim() });
           }
         }
 
@@ -231,9 +272,49 @@ class FormScraperService {
           placeholder: el.placeholder || null,
           currentValue: el.value || '',
           isVisible: true,
+          isClickable: false,
           options: options.length > 0 ? options : null
         });
       }
+
+      // 2. Scrape clickable elements (buttons, links, [onclick])
+      var clickables = document.querySelectorAll('button, a[href], input[type=submit], input[type=button], [onclick], [role=button]');
+      for (var i = 0; i < clickables.length; i++) {
+        var el = clickables[i];
+        var rect = el.getBoundingClientRect();
+        var style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' ||
+            rect.width === 0 || rect.height === 0) continue;
+
+        var selector = '';
+        if (el.id) {
+          selector = '#' + CSS.escape(el.id);
+        } else if (el.className && typeof el.className === 'string' && el.className.trim()) {
+          selector = el.tagName.toLowerCase() + '.' + el.className.trim().split(/\\s+/).join('.');
+        } else {
+          var parent = el.parentElement;
+          if (parent && parent.id) {
+            selector = '#' + CSS.escape(parent.id) + ' > ' + el.tagName.toLowerCase();
+          }
+        }
+        if (!selector) continue;
+
+        var text = el.innerText ? el.innerText.trim().substring(0, 50) : '';
+        fields.push({
+          selector: selector,
+          tagName: el.tagName.toLowerCase(),
+          type: 'button',
+          id: el.id || null,
+          name: el.name || null,
+          label: text || null,
+          placeholder: null,
+          currentValue: '',
+          isVisible: true,
+          isClickable: true,
+          options: null
+        });
+      }
+
       return JSON.stringify(fields);
     })();
     ''';
@@ -242,7 +323,6 @@ class FormScraperService {
   /// Parse the JSON result from JavaScript.
   List<ScrapedField> _parseScrapeResult(String jsonStr) {
     try {
-      // Remove surrounding quotes if present (JS string result)
       var clean = jsonStr.trim();
       if (clean.startsWith('"') && clean.endsWith('"')) {
         clean = clean.substring(1, clean.length - 1);
@@ -262,6 +342,7 @@ class FormScraperService {
           placeholder: map['placeholder'],
           currentValue: map['currentValue'] ?? '',
           isVisible: map['isVisible'] ?? true,
+          isClickable: map['isClickable'] ?? false,
           options: map['options'] != null
               ? (map['options'] as List)
                   .map((o) => ScrapedOption(

@@ -113,6 +113,22 @@ class AutomationService {
     }
   }
 
+  /// Navigate to a task page and select "无" (none) option.
+  Future<void> _navigateAndSelectNone(String taskType) async {
+    debugPrint('  → 导航到 $taskType 页面并选择"无"');
+    // This will be handled by the browser-based automation
+    // For now, log the action
+    await Future.delayed(const Duration(seconds: 1));
+  }
+
+  /// Fill form with AI-generated content via browser.
+  Future<void> _fillFormWithAiContent(String taskType, String aiContent) async {
+    debugPrint('  → 填写 $taskType 表单');
+    // This will be handled by the browser-based automation
+    // The content needs to be split and filled into multiple fields
+    await Future.delayed(const Duration(seconds: 1));
+  }
+
   Future<void> _taskMaterialSort(Account account) async {
     // Task 1: Click "无" on material sort and take screenshot
     debugPrint('Task 1: 材料排序');
@@ -123,19 +139,26 @@ class AutomationService {
   Future<void> _taskPosition(Account account) async {
     debugPrint('Task 2: 任职情况');
     if (account.positions.isEmpty) {
-      // Select "无"
+      debugPrint('  → 账号无职务，跳过');
+      // Navigate to position page and select "无"
+      await _navigateAndSelectNone('position');
       return;
     }
 
     for (final position in account.positions) {
+      if (!_isRunning) break;
+      debugPrint('  → 处理职务: ${position.title}');
       final response = await AiService.instance.generateContent(
         'position',
         position.title,
       );
 
       if (response.success) {
-        // Fill the form with AI response
-        debugPrint('Position AI Response: ${response.content}');
+        debugPrint('  → AI生成成功: ${response.content.substring(0, 50)}...');
+        // Fill the form with AI response via browser
+        await _fillFormWithAiContent('position', response.content);
+      } else {
+        onError?.call('任职情况AI生成失败: ${response.error}');
       }
     }
   }
@@ -143,32 +166,40 @@ class AutomationService {
   Future<void> _taskReward(Account account) async {
     debugPrint('Task 3: 奖惩情况');
     if (account.rewards.isEmpty) {
-      // Select "无"
+      debugPrint('  → 账号无奖惩，跳过');
+      await _navigateAndSelectNone('reward');
       return;
     }
 
     for (final reward in account.rewards) {
+      if (!_isRunning) break;
+      debugPrint('  → 处理奖惩: ${reward.title}');
       final response = await AiService.instance.generateContent(
         'reward',
         reward.title,
       );
 
       if (response.success) {
-        debugPrint('Reward AI Response: ${response.content}');
+        debugPrint('  → AI生成成功');
+        await _fillFormWithAiContent('reward', response.content);
+      } else {
+        onError?.call('奖惩情况AI生成失败: ${response.error}');
       }
     }
   }
 
   Future<void> _taskPhysicalEducation(Account account) async {
     debugPrint('Task 4: 日常体育锻炼');
-    // Fill attendance rates with 100
+    await _fillFormWithAiContent('physical_education', '100');
   }
 
   Future<void> _taskPsychology(Account account) async {
     debugPrint('Task 5: 心理素质展示');
     final response = await AiService.instance.generateContent('psychology', '');
     if (response.success) {
-      debugPrint('Psychology AI Response: ${response.content}');
+      await _fillFormWithAiContent('psychology', response.content);
+    } else {
+      onError?.call('心理素质AI生成失败: ${response.error}');
     }
   }
 
@@ -176,7 +207,9 @@ class AutomationService {
     debugPrint('Task 6: 陈述报告');
     final response = await AiService.instance.generateContent('statement', '');
     if (response.success) {
-      debugPrint('Statement AI Response: ${response.content}');
+      await _fillFormWithAiContent('statement', response.content);
+    } else {
+      onError?.call('陈述报告AI生成失败: ${response.error}');
     }
   }
 
@@ -184,7 +217,9 @@ class AutomationService {
     debugPrint('Task 7: 党团活动');
     final response = await AiService.instance.generateContent('party_activity', '');
     if (response.success) {
-      debugPrint('Party Activity AI Response: ${response.content}');
+      await _fillFormWithAiContent('party_activity', response.content);
+    } else {
+      onError?.call('党团活动AI生成失败: ${response.error}');
     }
   }
 
@@ -192,7 +227,9 @@ class AutomationService {
     debugPrint('Task 8: 志愿服务');
     final response = await AiService.instance.generateContent('volunteer', '');
     if (response.success) {
-      debugPrint('Volunteer AI Response: ${response.content}');
+      await _fillFormWithAiContent('volunteer', response.content);
+    } else {
+      onError?.call('志愿服务AI生成失败: ${response.error}');
     }
   }
 
@@ -200,7 +237,9 @@ class AutomationService {
     debugPrint('Task 9: 艺术素养');
     final response = await AiService.instance.generateContent('art', '');
     if (response.success) {
-      debugPrint('Art AI Response: ${response.content}');
+      await _fillFormWithAiContent('art', response.content);
+    } else {
+      onError?.call('艺术素养AI生成失败: ${response.error}');
     }
   }
 
@@ -208,7 +247,9 @@ class AutomationService {
     debugPrint('Task 10: 劳动与实践');
     final response = await AiService.instance.generateContent('labor', '');
     if (response.success) {
-      debugPrint('Labor AI Response: ${response.content}');
+      await _fillFormWithAiContent('labor', response.content);
+    } else {
+      onError?.call('劳动实践AI生成失败: ${response.error}');
     }
   }
 
@@ -216,7 +257,9 @@ class AutomationService {
     debugPrint('Task 11: 课题研究');
     final response = await AiService.instance.generateContent('research', '');
     if (response.success) {
-      debugPrint('Research AI Response: ${response.content}');
+      await _fillFormWithAiContent('research', response.content);
+    } else {
+      onError?.call('课题研究AI生成失败: ${response.error}');
     }
   }
 
@@ -224,7 +267,9 @@ class AutomationService {
     debugPrint('Task 12: 项目设计');
     final response = await AiService.instance.generateContent('project_design', '');
     if (response.success) {
-      debugPrint('Project Design AI Response: ${response.content}');
+      await _fillFormWithAiContent('project_design', response.content);
+    } else {
+      onError?.call('项目设计AI生成失败: ${response.error}');
     }
   }
 }
