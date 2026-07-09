@@ -102,7 +102,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
           // URL bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Theme.of(context).colorScheme.surfaceVariant,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: Row(
               children: [
                 const Icon(Icons.link, size: 16),

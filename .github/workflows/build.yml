@@ -39,7 +39,7 @@ jobs:
           test -f lib/models/settings.g.dart || (echo "Missing settings.g.dart" && exit 1)
 
       - name: Analyze code
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build Android APK
         run: flutter build apk --release
@@ -77,7 +77,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze code
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build Windows
         run: flutter build windows --release

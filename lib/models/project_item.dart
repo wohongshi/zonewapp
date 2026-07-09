@@ -1,6 +1,3 @@
-import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
-
 class ProjectItem {
   final String id;
   final String name;

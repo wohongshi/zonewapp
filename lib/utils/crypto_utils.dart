@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 
 /// Simple password obfuscation for local storage.
 /// This is NOT production-grade encryption — it prevents casual reading
