@@ -20,9 +20,9 @@ class WebAi2ApiService {
 
   bool get isRunning => _isRunning;
   String get serviceUrl => 'http://localhost:$_port';
-  String get lanUrl {
+  Future<String> getLanUrl() async {
     try {
-      for (final iface in NetworkInterface.listSync()) {
+      for (final iface in await NetworkInterface.list()) {
         for (final addr in iface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
             return 'http://${addr.address}:$_port';

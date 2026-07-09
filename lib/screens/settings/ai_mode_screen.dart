@@ -7,6 +7,7 @@ import '../../models/settings.dart';
 import '../../services/ai_service.dart';
 import '../../services/webai2api_service.dart';
 import '../terminal/terminal_screen.dart';
+import '../../services/terminal_service.dart';
 
 class AiModeScreen extends ConsumerStatefulWidget {
   const AiModeScreen({super.key});
@@ -499,6 +500,7 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
             final installed = status['installed'] ?? false;
             final running = status['running'] ?? false;
             final token = status['token'] as String?;
+            final lanUrl = status['lanUrl'] as String? ?? 'http://<手机IP>:3000';
 
             return Card(
               color: running
@@ -553,7 +555,7 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
                                     fontWeight: FontWeight.bold, fontSize: 12)),
                             const SizedBox(height: 4),
                             SelectableText(
-                              svc.lanUrl,
+                              lanUrl,
                               style: const TextStyle(
                                 fontFamily: 'monospace',
                                 fontSize: 14,
@@ -672,10 +674,12 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
         '/data/data/com.termux/files/home/WebAI2API/package.json');
     final running = installed ? await svc.healthCheck() : false;
     final token = installed ? await svc.getApiToken() : null;
+    final lanUrl = running ? await svc.getLanUrl() : null;
     return {
       'installed': installed,
       'running': running,
       'token': token,
+      'lanUrl': lanUrl,
     };
   }
 
@@ -798,7 +802,7 @@ npm start
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ 服务已启动\n地址: ${svc.lanUrl}'),
+            content: Text('✅ 服务已启动\n地址: ${await svc.getLanUrl()}'),
             duration: const Duration(seconds: 5),
           ),
         );
