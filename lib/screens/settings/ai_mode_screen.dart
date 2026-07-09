@@ -5,8 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/settings.dart';
 import '../../services/ai_service.dart';
-import '../../services/webview_ai_service.dart';
-import '../../services/terminal_service.dart';
 import '../terminal/terminal_screen.dart';
 
 class AiModeScreen extends ConsumerStatefulWidget {
@@ -34,11 +32,7 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
   bool _webaiTesting = false;
   String? _webaiTestResult;
 
-  // WebView mode
-  String _webViewPlatform = 'deepseek';
-  bool _webViewReady = false;
-  String _webViewStatus = '未初始化';
-  StreamSubscription<String>? _statusSub;
+
 
   bool _isTesting = false;
   String? _testResult;
@@ -47,14 +41,7 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
   void initState() {
     super.initState();
     _loadConfig();
-    _statusSub = WebViewAiService.instance.statusStream.listen((status) {
-      if (mounted) {
-        setState(() {
-          _webViewStatus = status;
-          _webViewReady = status == '就绪';
-        });
-      }
-    });
+
   }
 
   void _loadConfig() {
@@ -74,15 +61,12 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
         _webaiUrlController.text = config['serverUrl'] ?? '';
         _webaiTokenController.text = config['serverToken'] ?? '';
         _webaiModel = config['model'] ?? 'deepseek-chat';
-      } else if (_selectedMode == 'webview') {
-        _webViewPlatform = config['platform'] ?? 'deepseek';
-      }
+
     }
   }
 
   @override
   void dispose() {
-    _statusSub?.cancel();
     _apiUrlController.dispose();
     _apiKeyController.dispose();
     _apiModelController.dispose();
@@ -123,21 +107,13 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
             tag: '免费',
             tagColor: Colors.green,
           ),
-          const SizedBox(height: 8),
-          _buildModeCard(
-            mode: 'webview',
-            icon: Icons.phone_android,
-            title: 'WebView 模式',
-            subtitle: 'App 内直接打开 AI 网页（实验性）',
-            tag: '实验',
-            tagColor: Colors.blue,
-          ),
+
           const SizedBox(height: 16),
 
           // Mode content
           if (_selectedMode == 'api') _buildApiSettings(),
           if (_selectedMode == 'webai2api') _buildWebaiSettings(),
-          if (_selectedMode == 'webview') _buildWebViewSettings(),
+
         ],
       ),
     );
@@ -734,180 +710,6 @@ npm start
     );
   }
 
-  // ==================== WebView Mode ====================
-
-  Widget _buildWebViewSettings() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('WebView 配置',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text('在 App 内直接打开 AI 网页，无需额外部署',
-                style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 16),
-
-            DropdownButtonFormField<String>(
-              value: _webViewPlatform,
-              decoration: const InputDecoration(
-                labelText: 'AI 平台',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(
-                    value: 'deepseek', child: Text('DeepSeek')),
-                DropdownMenuItem(
-                    value: 'chatgpt', child: Text('ChatGPT')),
-                DropdownMenuItem(
-                    value: 'gemini', child: Text('Gemini')),
-              ],
-              onChanged: (v) {
-                setState(() => _webViewPlatform = v!);
-                _saveConfig();
-              },
-            ),
-            const SizedBox(height: 12),
-
-            // Status
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _webViewReady
-                    ? Colors.green.shade50
-                    : Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _webViewReady ? Icons.check_circle : Icons.info,
-                    color: _webViewReady ? Colors.green : Colors.orange,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(_webViewStatus, style: const TextStyle(fontSize: 13)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            FilledButton.icon(
-              onPressed: _initWebView,
-              icon: const Icon(Icons.open_in_browser),
-              label: const Text('打开 AI 网页并登录'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 48),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            if (_webViewReady) ...[
-              OutlinedButton.icon(
-                onPressed: _testWebView,
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('测试发送'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-              ),
-              const SizedBox(height: 8),
-              FilledButton.icon(
-                onPressed: _saveConfig,
-                icon: const Icon(Icons.save),
-                label: const Text('保存'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _initWebView() async {
-    await WebViewAiService.instance.init(_webViewPlatform);
-    _saveConfig();
-
-    final controller = WebViewAiService.instance.controller;
-    if (controller != null && mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => Dialog(
-          insetPadding: const EdgeInsets.all(8),
-          child: Column(
-            children: [
-              AppBar(
-                title: Text('$_webViewPlatform 登录'),
-                automaticallyImplyLeading: false,
-                actions: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              Expanded(
-                child: WebViewWidget(controller: controller),
-              ),
-              Container(
-                padding: const EdgeInsets.all(12),
-                color: Theme.of(context).colorScheme.primaryContainer,
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _webViewReady
-                            ? '✅ 已就绪，可以关闭'
-                            : '请登录后等待状态变为「就绪」',
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-  }
-
-  Future<void> _testWebView() async {
-    setState(() => _isTesting = true);
-    final resp =
-        await WebViewAiService.instance.sendMessage('你好，请用一句话介绍自己');
-    if (mounted) {
-      setState(() => _isTesting = false);
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(resp.success ? '✅ 成功' : '❌ 失败'),
-          content: Text(resp.success
-              ? resp.content ?? ''
-              : resp.error ?? '未知错误'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('确定'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
   // ==================== Save ====================
 
   Future<void> _saveConfig() async {
@@ -930,12 +732,7 @@ npm start
         'serverToken': _webaiTokenController.text,
         'model': _webaiModel,
       });
-    } else if (_selectedMode == 'webview') {
-      await notifier.updateAiMode('webview');
-      await notifier.updateAiConfig({
-        'platform': _webViewPlatform,
-      });
-    }
+
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
