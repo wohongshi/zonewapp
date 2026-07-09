@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class AboutScreen extends ConsumerStatefulWidget {
+class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
 
   @override
-  ConsumerState<AboutScreen> createState() => _AboutScreenState();
+  State<AboutScreen> createState() => _AboutScreenState();
 }
 
-class _AboutScreenState extends ConsumerState<AboutScreen> {
+class _AboutScreenState extends State<AboutScreen> {
   int _avatarTapCount = 0;
   bool _secretUnlocked = false;
 
@@ -44,17 +43,10 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
                     child: CircleAvatar(
                       radius: 48,
                       backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                      child: Image.asset(
-                        'assets/images/avatar.png',
-                        width: 64,
-                        height: 64,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(
-                            Icons.person,
-                            size: 48,
-                            color: Theme.of(context).colorScheme.primary,
-                          );
-                        },
+                      child: Icon(
+                        Icons.person,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                   ),
@@ -186,7 +178,7 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
+                  const Text(
                     'ZonewApp 是一款专为山东省综合评价平台设计的自动化填写工具。\n\n'
                     '主要功能：\n'
                     '• 自动填写综合评价平台各项内容\n'
@@ -194,7 +186,6 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
                     '• 自动截图保存\n'
                     '• 多账号批量处理\n'
                     '• 数据备份与恢复',
-                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ],
               ),

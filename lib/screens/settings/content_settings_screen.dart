@@ -14,7 +14,7 @@ class _ContentSettingsScreenState extends ConsumerState<ContentSettingsScreen> {
   final Map<String, bool> _expanded = {};
   bool _hasChanges = false;
 
-  final List<String> _subjects = [
+  final List<String> _subjects = const [
     '语文', '物理', '化学', '生物', '地理', '历史', '政治',
   ];
 
@@ -40,19 +40,15 @@ class _ContentSettingsScreenState extends ConsumerState<ContentSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
+    return WillPopScope(
+      onWillPop: () async {
         if (_hasChanges) {
           final shouldSave = await _showSaveDialog();
           if (shouldSave == true) {
             await _saveAll();
           }
         }
-        if (context.mounted) {
-          Navigator.pop(context);
-        }
+        return true;
       },
       child: Scaffold(
         appBar: AppBar(

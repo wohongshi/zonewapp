@@ -1,16 +1,9 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shelf/shelf.dart';
-import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import '../services/storage_service.dart';
 import '../models/account.dart';
-
-class _WsClient {
-  final Socket socket;
-  _WsClient(this.socket);
-}
 
 class WebServerService {
   static final WebServerService instance = WebServerService._();
@@ -24,15 +17,31 @@ class WebServerService {
   Future<void> start({int port = 35535}) async {
     if (_isRunning) return;
 
-    final handler = const Pipeline()
-        .addMiddleware(logRequests())
-        .addMiddleware(_corsMiddleware())
-        .addHandler(_handleRequest);
-
-    _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
+    _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
     _isRunning = true;
 
     debugPrint('Web server running on http://…:$port');
+
+    _server!.listen((HttpRequest request) async {
+      // CORS headers
+      request.response.headers.set('Access-Control-Allow-Origin', '*');
+      request.response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      request.response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+      if (request.method == 'OPTIONS') {
+        request.response.statusCode = 200;
+        await request.response.close();
+        return;
+      }
+
+      try {
+        await _handleRequest(request);
+      } catch (e) {
+        request.response.statusCode = 500;
+        request.response.write(jsonEncode({'error': e.toString()}));
+        await request.response.close();
+      }
+    });
   }
 
   Future<void> stop() async {
@@ -42,50 +51,37 @@ class WebServerService {
     _isRunning = false;
   }
 
-  Middleware _corsMiddleware() {
-    return (Handler innerHandler) {
-      return (Request request) async {
-        if (request.method == 'OPTIONS') {
-          return Response.ok('', headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          });
-        }
-
-        final response = await innerHandler(request);
-        return response.change(headers: {
-          'Access-Control-Allow-Origin': '*',
-        });
-      };
-    };
-  }
-
-  Future<Response> _handleRequest(Request request) async {
-    final path = request.url.path;
+  Future<void> _handleRequest(HttpRequest request) async {
+    final path = request.uri.path;
 
     switch (path) {
       case '':
-      case 'index.html':
-        return _serveIndex();
-      case 'api/accounts':
-        return await _handleAccounts(request);
-      case 'api/status':
-        return await _handleStatus();
-      case 'api/settings':
-        return await _handleSettings(request);
-      case 'api/poll':
-        return await _handleStatus(); // Simple polling endpoint
+      case '/':
+      case '/index.html':
+        await _serveIndex(request);
+        break;
+      case '/api/accounts':
+        await _handleAccounts(request);
+        break;
+      case '/api/status':
+        await _handleStatus(request);
+        break;
+      case '/api/settings':
+        await _handleSettings(request);
+        break;
       default:
-        if (path.startsWith('api/accounts/')) {
-          final id = path.replaceFirst('api/accounts/', '');
-          return await _handleAccountById(request, id);
+        if (path.startsWith('/api/accounts/')) {
+          final id = path.replaceFirst('/api/accounts/', '');
+          await _handleAccountById(request, id);
+        } else {
+          request.response.statusCode = 404;
+          request.response.write('Not found');
+          await request.response.close();
         }
-        return Response.notFound('Not found');
     }
   }
 
-  Response _serveIndex() {
+  Future<void> _serveIndex(HttpRequest request) async {
     final html = '''
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -114,14 +110,13 @@ class WebServerService {
         .progress-item.red { background: #ffebee; color: #c62828; }
         .account-list { list-style: none; }
         .account-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; }
-        .account-item:last-child { border-bottom: none; }
         .account-info { flex: 1; }
         .account-info .name { font-weight: 500; }
         .account-info .status { font-size: 12px; color: #666; }
         .badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; }
-        .badge.incomplete { background: #fff3e0; color: #e65100; }
         .badge.completed { background: #e8f5e9; color: #2e7d32; }
         .badge.error { background: #ffebee; color: #c62828; }
+        .badge.incomplete { background: #fff3e0; color: #e65100; }
         .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
         .btn-primary { background: #1976d2; color: white; }
         .form-group { margin-bottom: 16px; }
@@ -129,7 +124,7 @@ class WebServerService {
         .form-group input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
         .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100; }
         .modal.active { display: flex; align-items: center; justify-content: center; }
-        .modal-content { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+        .modal-content { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; }
     </style>
 </head>
 <body>
@@ -144,184 +139,142 @@ class WebServerService {
     <div class="container">
         <div id="home-page">
             <div class="status-grid">
-                <div class="card status-item">
-                    <div class="number" id="total-accounts">0</div>
-                    <div class="label">总账号</div>
-                </div>
-                <div class="card status-item">
-                    <div class="number" id="completed-accounts" style="color:#2e7d32">0</div>
-                    <div class="label">已完成</div>
-                </div>
-                <div class="card status-item">
-                    <div class="number" id="incomplete-accounts" style="color:#e65100">0</div>
-                    <div class="label">未完成</div>
-                </div>
-                <div class="card status-item">
-                    <div class="number" id="error-accounts" style="color:#c62828">0</div>
-                    <div class="label">状态异常</div>
-                </div>
+                <div class="card status-item"><div class="number" id="total">0</div><div class="label">总账号</div></div>
+                <div class="card status-item"><div class="number" id="completed" style="color:#2e7d32">0</div><div class="label">已完成</div></div>
+                <div class="card status-item"><div class="number" id="incomplete" style="color:#e65100">0</div><div class="label">未完成</div></div>
+                <div class="card status-item"><div class="number" id="error" style="color:#c62828">0</div><div class="label">状态异常</div></div>
             </div>
-            <div class="card">
-                <h3 style="margin-bottom:16px">完成进度</h3>
-                <div class="progress-grid" id="progress-grid"></div>
-            </div>
+            <div class="card"><h3 style="margin-bottom:16px">项目进度</h3><div class="progress-grid" id="progress"></div></div>
         </div>
         <div id="account-page" style="display:none">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                 <h2>账号管理</h2>
-                <button class="btn btn-primary" onclick="showAddAccount()">+ 添加账号</button>
+                <button class="btn btn-primary" onclick="showAdd()">+ 添加账号</button>
             </div>
-            <div class="card">
-                <ul class="account-list" id="account-list"></ul>
-            </div>
+            <div class="card"><ul class="account-list" id="accounts"></ul></div>
         </div>
     </div>
-    <div class="modal" id="add-modal">
+    <div class="modal" id="modal">
         <div class="modal-content">
             <h3 style="margin-bottom:16px">添加账号</h3>
-            <div class="form-group">
-                <label>账号</label>
-                <input type="text" id="input-username" placeholder="请输入账号">
-            </div>
-            <div class="form-group">
-                <label>密码</label>
-                <input type="password" id="input-password" placeholder="请输入密码">
-            </div>
-            <div class="form-group">
-                <label>班主任姓名</label>
-                <input type="text" id="input-teacher" placeholder="请输入班主任姓名">
-            </div>
+            <div class="form-group"><label>账号</label><input type="text" id="u" placeholder="请输入账号"></div>
+            <div class="form-group"><label>密码</label><input type="password" id="p" placeholder="请输入密码"></div>
+            <div class="form-group"><label>班主任姓名</label><input type="text" id="t" placeholder="请输入班主任姓名"></div>
             <div style="display:flex;gap:8px;justify-content:flex-end">
                 <button class="btn" onclick="closeModal()">取消</button>
-                <button class="btn btn-primary" onclick="addAccount()">添加</button>
+                <button class="btn btn-primary" onclick="addAcc()">添加</button>
             </div>
         </div>
     </div>
     <script>
-        function showPage(page, btn) {
-            document.getElementById('home-page').style.display = page === 'home' ? 'block' : 'none';
-            document.getElementById('account-page').style.display = page === 'account' ? 'block' : 'none';
-            document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            loadData();
+        function showPage(p,btn){
+            document.getElementById('home-page').style.display=p==='home'?'block':'none';
+            document.getElementById('account-page').style.display=p==='account'?'block':'none';
+            document.querySelectorAll('.nav button').forEach(function(b){b.classList.remove('active')});
+            btn.classList.add('active');load();
         }
-
-        async function loadData() {
-            try {
-                const status = await (await fetch('/api/status')).json();
-                if (status.success) {
-                    const d = status.data;
-                    document.getElementById('total-accounts').textContent = d.total_accounts;
-                    document.getElementById('completed-accounts').textContent = d.completed;
-                    document.getElementById('incomplete-accounts').textContent = d.incomplete;
-                    document.getElementById('error-accounts').textContent = d.error;
+        async function load(){
+            try{
+                var s=await(await fetch('/api/status')).json();
+                if(s.success){var d=s.data;
+                    document.getElementById('total').textContent=d.total_accounts;
+                    document.getElementById('completed').textContent=d.completed;
+                    document.getElementById('incomplete').textContent=d.incomplete;
+                    document.getElementById('error').textContent=d.error;
                 }
-
-                const accounts = await (await fetch('/api/accounts')).json();
-                if (accounts.success) renderAccounts(accounts.data);
-            } catch(e) { console.error(e); }
+                var a=await(await fetch('/api/accounts')).json();
+                if(a.success)render(a.data);
+            }catch(e){console.error(e)}
         }
-
-        function renderAccounts(accounts) {
-            const list = document.getElementById('account-list');
-            list.innerHTML = accounts.map(function(a) {
-                var cls = a.status === '已完成' ? 'completed' : a.status === '状态异常' ? 'error' : 'incomplete';
-                return '<li class="account-item"><div class="account-info"><div class="name">' + a.username + '</div><div class="status">班主任: ' + a.teacher_name + ' | 创建: ' + a.created_at.split('T')[0] + '</div></div><span class="badge ' + cls + '">' + a.status + '</span></li>';
+        function render(accs){
+            var list=document.getElementById('accounts');
+            list.innerHTML=accs.map(function(a){
+                var c=a.status==='已完成'?'completed':a.status==='状态异常'?'error':'incomplete';
+                return '<li class="account-item"><div class="account-info"><div class="name">'+a.username+'</div><div class="status">班主任: '+a.teacher_name+'</div></div><span class="badge '+c+'">'+a.status+'</span></li>';
             }).join('');
-
-            var grid = document.getElementById('progress-grid');
-            var items = ['材料排序','任职情况','奖惩情况','体育锻炼','心理素质','陈述报告','党团活动','志愿服务','艺术素养','劳动实践','课题研究','项目设计'];
-            grid.innerHTML = items.map(function(name, i) {
-                var s = accounts.length > 0 ? (i < 4 ? 'green' : i < 8 ? 'blue' : 'red') : 'red';
-                return '<div class="progress-item ' + s + '">' + name + '</div>';
+            var items=['材料排序','任职情况','奖惩情况','体育锻炼','心理素质','陈述报告','党团活动','志愿服务','艺术素养','劳动实践','课题研究','项目设计'];
+            document.getElementById('progress').innerHTML=items.map(function(n,i){
+                var s=accs.length>0?(i<4?'green':i<8?'blue':'red'):'red';
+                return '<div class="progress-item '+s+'">'+n+'</div>';
             }).join('');
         }
-
-        function showAddAccount() { document.getElementById('add-modal').classList.add('active'); }
-        function closeModal() { document.getElementById('add-modal').classList.remove('active'); }
-
-        async function addAccount() {
-            var account = {
-                id: crypto.randomUUID(),
-                username: document.getElementById('input-username').value,
-                password: document.getElementById('input-password').value,
-                teacher_name: document.getElementById('input-teacher').value,
-                subjects: [], positions: [], rewards: [],
-                status: '未完成',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            };
-            await fetch('/api/accounts', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(account) });
-            closeModal();
-            loadData();
+        function showAdd(){document.getElementById('modal').classList.add('active')}
+        function closeModal(){document.getElementById('modal').classList.remove('active')}
+        async function addAcc(){
+            var a={id:crypto.randomUUID(),username:document.getElementById('u').value,password:document.getElementById('p').value,teacher_name:document.getElementById('t').value,subjects:[],positions:[],rewards:[],status:'未完成',created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+            await fetch('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)});
+            closeModal();load();
         }
-
-        loadData();
-        setInterval(loadData, 30000);
+        load();setInterval(load,30000);
     </script>
 </body>
 </html>
 ''';
-    return Response.ok(html, headers: {'content-type': 'text/html; charset=utf-8'});
+    request.response.headers.contentType = ContentType.html;
+    request.response.write(html);
+    await request.response.close();
   }
 
-  Future<Response> _handleAccounts(Request request) async {
+  Future<void> _handleAccounts(HttpRequest request) async {
+    request.response.headers.contentType = ContentType.json;
     if (request.method == 'GET') {
       final accounts = await StorageService.instance.loadAccounts();
-      return Response.ok(
-        jsonEncode({'success': true, 'data': accounts.map((a) => a.toJson()).toList()}),
-        headers: {'content-type': 'application/json'},
-      );
+      request.response.write(jsonEncode({
+        'success': true,
+        'data': accounts.map((a) => a.toJson()).toList(),
+      }));
     } else if (request.method == 'POST') {
-      final body = await request.readAsString();
+      final body = await utf8.decoder.bind(request).join();
       final data = jsonDecode(body);
       final account = Account.fromJson(data);
       await StorageService.instance.addAccount(account);
-      return Response.ok(
-        jsonEncode({'success': true}),
-        headers: {'content-type': 'application/json'},
-      );
+      request.response.write(jsonEncode({'success': true}));
+    } else {
+      request.response.statusCode = 405;
     }
-    return Response.badRequest();
+    await request.response.close();
   }
 
-  Future<Response> _handleAccountById(Request request, String id) async {
+  Future<void> _handleAccountById(HttpRequest request, String id) async {
+    request.response.headers.contentType = ContentType.json;
     if (request.method == 'DELETE') {
       await StorageService.instance.deleteAccount(id);
-      return Response.ok(jsonEncode({'success': true}), headers: {'content-type': 'application/json'});
+      request.response.write(jsonEncode({'success': true}));
+    } else {
+      request.response.statusCode = 405;
     }
-    return Response.badRequest();
+    await request.response.close();
   }
 
-  Future<Response> _handleStatus() async {
+  Future<void> _handleStatus(HttpRequest request) async {
+    request.response.headers.contentType = ContentType.json;
     final accounts = await StorageService.instance.loadAccounts();
     final total = accounts.length;
     final completed = accounts.where((a) => a.status == '已完成').length;
-    final error = accounts.where((a) => a.status == '状态异常').length;
-    final incomplete = total - completed - error;
-
-    return Response.ok(
-      jsonEncode({
-        'success': true,
-        'data': {
-          'total_accounts': total,
-          'completed': completed,
-          'incomplete': incomplete,
-          'error': error,
-        },
-      }),
-      headers: {'content-type': 'application/json'},
-    );
+    final err = accounts.where((a) => a.status == '状态异常').length;
+    request.response.write(jsonEncode({
+      'success': true,
+      'data': {
+        'total_accounts': total,
+        'completed': completed,
+        'incomplete': total - completed - err,
+        'error': err,
+      },
+    }));
+    await request.response.close();
   }
 
-  Future<Response> _handleSettings(Request request) async {
+  Future<void> _handleSettings(HttpRequest request) async {
+    request.response.headers.contentType = ContentType.json;
     if (request.method == 'GET') {
       final settings = await StorageService.instance.loadSettings();
-      return Response.ok(
-        jsonEncode({'success': true, 'data': settings.toJson()}),
-        headers: {'content-type': 'application/json'},
-      );
+      request.response.write(jsonEncode({
+        'success': true,
+        'data': settings.toJson(),
+      }));
+    } else {
+      request.response.statusCode = 405;
     }
-    return Response.badRequest();
+    await request.response.close();
   }
 }

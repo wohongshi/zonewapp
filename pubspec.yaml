@@ -21,21 +21,17 @@ dependencies:
   
   # WebView
   webview_flutter: ^4.4.4
-  webview_flutter_android: ^3.14.0
   
-  # HTTP & Networking
+  # HTTP
   dio: ^5.4.0
-  shelf: ^1.4.1
   
-  # UI Components
-  dynamic_color: ^1.7.0
+  # UI
   google_fonts: ^6.1.0
   percent_indicator: ^4.2.3
   
-  # File & Image
+  # File
   image_picker: ^1.0.7
   file_picker: ^6.1.1
-  screenshot: ^2.1.0
   
   # Notification
   flutter_local_notifications: ^16.3.2
@@ -45,8 +41,6 @@ dependencies:
   intl: ^0.19.0
   json_annotation: ^4.8.1
   collection: ^1.18.0
-  
-  # URL Launcher
   url_launcher: ^6.2.2
 
 dev_dependencies:

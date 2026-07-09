@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../models/account.dart';
 import '../services/ai_service.dart';
 import '../services/storage_service.dart';
-import '../providers/automation_provider.dart';
 
 class AutomationService {
   static final AutomationService instance = AutomationService._();

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:dynamic_color/dynamic_color.dart';
 
 import 'screens/home/home_screen.dart';
 import 'screens/account/account_screen.dart';
@@ -16,17 +15,13 @@ class ZonewApp extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final themeMode = _getThemeMode(settings.themeMode);
 
-    return DynamicColorBuilder(
-      builder: (lightDynamic, darkDynamic) {
-        return MaterialApp(
-          title: 'ZonewApp',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(lightDynamic),
-          darkTheme: AppTheme.dark(darkDynamic),
-          themeMode: themeMode,
-          home: const MainScreen(),
-        );
-      },
+    return MaterialApp(
+      title: 'ZonewApp',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: themeMode,
+      home: const MainScreen(),
     );
   }
 
@@ -36,8 +31,6 @@ class ZonewApp extends ConsumerWidget {
         return ThemeMode.light;
       case 'dark':
         return ThemeMode.dark;
-      case 'monet':
-        return ThemeMode.system;
       default:
         return ThemeMode.system;
     }
@@ -54,13 +47,13 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const AccountScreen(),
-    const SettingsScreen(),
+  final List<Widget> _screens = const [
+    HomeScreen(),
+    AccountScreen(),
+    SettingsScreen(),
   ];
 
-  final List<String> _titles = [
+  final List<String> _titles = const [
     '主页',
     '账号',
     '设置',
