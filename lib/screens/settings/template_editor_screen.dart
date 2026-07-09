@@ -1,8 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
 import '../models/task_template.dart';
-import '../services/web_automation_service.dart';
 
 /// Screen for editing a single task template.
 class TemplateEditorScreen extends StatefulWidget {
