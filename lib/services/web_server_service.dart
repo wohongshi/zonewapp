@@ -35,7 +35,14 @@ class WebServerService {
     // Generate a token if one doesn't exist
     _accessToken ??= generateToken();
 
-    _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+    // Bind to both IPv4 and IPv6 for external access
+    try {
+      _server = await HttpServer.bind(InternetAddress.anyIPv6, port, v6Only: false);
+    } catch (e) {
+      // Fallback to IPv4 only if IPv6 is not available
+      debugPrint('IPv6 bind failed, falling back to IPv4: $e');
+      _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+    }
     _isRunning = true;
 
     debugPrint('Web server running on http://0.0.0.0:$port');
@@ -206,7 +213,7 @@ class WebServerService {
         </div>
     </div>
     <script>
-        var TOKEN = window.location.hash.substring(1) || '';
+        var TOKEN = '$_accessToken';
         function authHeaders(){
             return TOKEN ? {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'} : {'Content-Type': 'application/json'};
         }
