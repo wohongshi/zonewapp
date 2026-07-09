@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -69,6 +70,12 @@ class _WebViewScreenState extends State<WebViewScreen> {
     );
   }
 
+  /// Escape a string for safe embedding in JavaScript source code.
+  /// Uses JSON encoding to produce a properly quoted JS string literal.
+  String _escapeJs(String value) {
+    return jsonEncode(value);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -130,10 +137,12 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   Future<void> fillInput(String selector, String value) async {
+    final safeSelector = _escapeJs(selector);
+    final safeValue = _escapeJs(value);
     await runJavaScript('''
-      var element = document.querySelector('$selector');
+      var element = document.querySelector($safeSelector);
       if (element) {
-        element.value = '$value';
+        element.value = $safeValue;
         element.dispatchEvent(new Event('input', { bubbles: true }));
         element.dispatchEvent(new Event('change', { bubbles: true }));
       }
@@ -141,8 +150,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   Future<void> clickElement(String selector) async {
+    final safeSelector = _escapeJs(selector);
     await runJavaScript('''
-      var element = document.querySelector('$selector');
+      var element = document.querySelector($safeSelector);
       if (element) {
         element.click();
       }
@@ -150,26 +160,30 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   Future<void> selectOption(String selector, String value) async {
+    final safeSelector = _escapeJs(selector);
+    final safeValue = _escapeJs(value);
     await runJavaScript('''
-      var element = document.querySelector('$selector');
+      var element = document.querySelector($safeSelector);
       if (element) {
-        element.value = '$value';
+        element.value = $safeValue;
         element.dispatchEvent(new Event('change', { bubbles: true }));
       }
     ''');
   }
 
   Future<String> getElementText(String selector) async {
+    final safeSelector = _escapeJs(selector);
     final result = await runJavaScript('''
-      var element = document.querySelector('$selector');
+      var element = document.querySelector($safeSelector);
       element ? element.innerText : '';
     ''');
     return result.replaceAll('"', '');
   }
 
   Future<void> submitForm(String selector) async {
+    final safeSelector = _escapeJs(selector);
     await runJavaScript('''
-      var form = document.querySelector('$selector');
+      var form = document.querySelector($safeSelector);
       if (form) {
         form.submit();
       }

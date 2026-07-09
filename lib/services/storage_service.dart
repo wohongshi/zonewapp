@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:hive/hive.dart';
 import '../models/account.dart';
 import '../models/settings.dart';
+import '../utils/crypto_utils.dart';
 
 class StorageService {
   static final StorageService instance = StorageService._();
@@ -36,7 +37,12 @@ class StorageService {
       final json = _accountsBox?.get(key);
       if (json != null) {
         try {
-          accounts.add(Account.fromJson(jsonDecode(json)));
+          final decoded = jsonDecode(json);
+          // Decrypt password if encrypted
+          if (decoded['password'] != null) {
+            decoded['password'] = CryptoUtils.decrypt(decoded['password']);
+          }
+          accounts.add(Account.fromJson(decoded));
         } catch (e) {
           // skip invalid entries
         }
@@ -47,11 +53,17 @@ class StorageService {
   }
 
   Future<void> addAccount(Account account) async {
-    await _accountsBox?.put(account.id, jsonEncode(account.toJson()));
+    final data = account.toJson();
+    // Encrypt password before storing
+    data['password'] = CryptoUtils.encrypt(account.password);
+    await _accountsBox?.put(account.id, jsonEncode(data));
   }
 
   Future<void> updateAccount(Account account) async {
-    await _accountsBox?.put(account.id, jsonEncode(account.toJson()));
+    final data = account.toJson();
+    // Encrypt password before storing
+    data['password'] = CryptoUtils.encrypt(account.password);
+    await _accountsBox?.put(account.id, jsonEncode(data));
   }
 
   Future<void> deleteAccount(String id) async {
@@ -65,7 +77,12 @@ class StorageService {
 
     final Map<String, dynamic> data = {
       'settings': settings.toJson(),
-      'accounts': accounts.map((a) => a.toJson()).toList(),
+      'accounts': accounts.map((a) {
+        final json = a.toJson();
+        // Encrypt password in export
+        json['password'] = CryptoUtils.encrypt(a.password);
+        return json;
+      }).toList(),
       'exported_at': DateTime.now().toIso8601String(),
     };
 
@@ -83,8 +100,12 @@ class StorageService {
 
       if (data['accounts'] != null) {
         for (final accountJson in data['accounts']) {
+          // Decrypt password if encrypted
+          if (accountJson['password'] != null) {
+            accountJson['password'] = CryptoUtils.decrypt(accountJson['password']);
+          }
           final account = Account.fromJson(accountJson);
-          await addAccount(account);
+          await addAccount(account); // re-encrypts on store
         }
       }
 

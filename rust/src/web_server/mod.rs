@@ -3,9 +3,10 @@ use axum::{
     routing::{get, post, put, delete},
     extract::{State, Json, Path},
     response::IntoResponse,
-    http::StatusCode,
+    http::{StatusCode, HeaderMap},
+    middleware::{self, Next},
 };
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{CorsLayer, AllowOrigin};
 use std::sync::Arc;
 use std::net::SocketAddr;
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,7 @@ use crate::storage::{Database, Account, AppSettings};
 pub struct AppState {
     pub db: Arc<Database>,
     pub is_running: Arc<RwLock<bool>>,
+    pub access_token: Arc<RwLock<String>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -35,11 +37,70 @@ impl<T: Serialize> ApiResponse<T> {
     }
 }
 
+/// Generate a random access token for web server authentication.
+fn generate_token() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("zwa_{:x}", timestamp)
+}
+
+/// Middleware to verify Bearer token authentication on API endpoints.
+async fn auth_middleware(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    request: axum::extract::Request,
+    next: Next,
+) -> impl IntoResponse {
+    let path = request.uri().path();
+
+    // Skip auth for root/index page
+    if path == "/" || path == "" || path == "/index.html" {
+        return next.run(request).await;
+    }
+
+    let token = state.access_token.read().await;
+
+    // Verify Authorization header
+    let authorized = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(|auth| auth == format!("Bearer {}", *token))
+        .unwrap_or(false);
+
+    if !authorized {
+        return (StatusCode::UNAUTHORIZED, Json(ApiResponse::<String>::err("Unauthorized"))).into_response();
+    }
+
+    next.run(request).await
+}
+
 pub async fn start_web_server(db: Arc<Database>, port: u16) -> anyhow::Result<()> {
+    let access_token = generate_token();
+    tracing::info!("Web server access token: {}", access_token);
+
     let state = AppState {
         db,
         is_running: Arc::new(RwLock::new(true)),
+        access_token: Arc::new(RwLock::new(access_token)),
     };
+
+    // CORS: allow only localhost origins
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::exact(format!("http://127.0.0.1:{}", port).parse().unwrap()))
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::AUTHORIZATION,
+        ]);
 
     let app = Router::new()
         .route("/api/accounts", get(list_accounts).post(create_account))
@@ -48,10 +109,11 @@ pub async fn start_web_server(db: Arc<Database>, port: u16) -> anyhow::Result<()
         .route("/api/status", get(get_status))
         .route("/api/export", get(export_data))
         .route("/api/import", post(import_data))
-        .layer(CorsLayer::permissive())
+        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .layer(cors)
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     tracing::info!("Web server starting on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

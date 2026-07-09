@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../services/storage_service.dart';
 import '../models/account.dart';
@@ -11,20 +12,37 @@ class WebServerService {
 
   HttpServer? _server;
   bool _isRunning = false;
+  String? _accessToken;
 
   bool get isRunning => _isRunning;
+  String? get accessToken => _accessToken;
+
+  /// Generate a new access token for the web server.
+  /// Returns the token that clients must provide as Bearer auth.
+  String generateToken() {
+    _accessToken = const Uuid().v4();
+    return _accessToken!;
+  }
+
+  /// Clear the access token (disables auth until a new one is generated).
+  void clearToken() {
+    _accessToken = null;
+  }
 
   Future<void> start({int port = 35535}) async {
     if (_isRunning) return;
 
-    _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+    // Generate a token if one doesn't exist
+    _accessToken ??= generateToken();
+
+    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
     _isRunning = true;
 
-    debugPrint('Web server running on http://…:$port');
+    debugPrint('Web server running on http://127.0.0.1:$port');
 
     _server!.listen((HttpRequest request) async {
-      // CORS headers
-      request.response.headers.set('Access-Control-Allow-Origin', '*');
+      // CORS headers - restrict to localhost origins only
+      request.response.headers.set('Access-Control-Allow-Origin', 'http://127.0.0.1:$port');
       request.response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       request.response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -32,6 +50,21 @@ class WebServerService {
         request.response.statusCode = 200;
         await request.response.close();
         return;
+      }
+
+      // Skip auth for the index page and OPTIONS
+      final path = request.uri.path;
+      final isPublicPage = path == '/' || path == '' || path == '/index.html';
+
+      if (!isPublicPage) {
+        // Verify Bearer token for API endpoints
+        if (!_verifyAuth(request)) {
+          request.response.statusCode = 401;
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode({'error': 'Unauthorized'}));
+          await request.response.close();
+          return;
+        }
       }
 
       try {
@@ -42,6 +75,12 @@ class WebServerService {
         await request.response.close();
       }
     });
+  }
+
+  bool _verifyAuth(HttpRequest request) {
+    final authHeader = request.headers.value('Authorization');
+    if (authHeader == null || _accessToken == null) return false;
+    return authHeader == 'Bearer $_accessToken';
   }
 
   Future<void> stop() async {
@@ -167,6 +206,10 @@ class WebServerService {
         </div>
     </div>
     <script>
+        var TOKEN = window.location.hash.substring(1) || '';
+        function authHeaders(){
+            return TOKEN ? {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'} : {'Content-Type': 'application/json'};
+        }
         function showPage(p,btn){
             document.getElementById('home-page').style.display=p==='home'?'block':'none';
             document.getElementById('account-page').style.display=p==='account'?'block':'none';
@@ -175,14 +218,14 @@ class WebServerService {
         }
         async function load(){
             try{
-                var s=await(await fetch('/api/status')).json();
+                var s=await(await fetch('/api/status',{headers:authHeaders()})).json();
                 if(s.success){var d=s.data;
                     document.getElementById('total').textContent=d.total_accounts;
                     document.getElementById('completed').textContent=d.completed;
                     document.getElementById('incomplete').textContent=d.incomplete;
                     document.getElementById('error').textContent=d.error;
                 }
-                var a=await(await fetch('/api/accounts')).json();
+                var a=await(await fetch('/api/accounts',{headers:authHeaders()})).json();
                 if(a.success)render(a.data);
             }catch(e){console.error(e)}
         }
@@ -202,7 +245,7 @@ class WebServerService {
         function closeModal(){document.getElementById('modal').classList.remove('active')}
         async function addAcc(){
             var a={id:crypto.randomUUID(),username:document.getElementById('u').value,password:document.getElementById('p').value,teacher_name:document.getElementById('t').value,subjects:[],positions:[],rewards:[],status:'未完成',created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
-            await fetch('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)});
+            await fetch('/api/accounts',{method:'POST',headers:authHeaders(),body:JSON.stringify(a)});
             closeModal();load();
         }
         load();setInterval(load,30000);

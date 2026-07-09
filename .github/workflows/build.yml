@@ -32,6 +32,15 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Verify generated files
+        run: |
+          # Check that .g.dart files exist (pre-committed)
+          test -f lib/models/account.g.dart || (echo "Missing account.g.dart" && exit 1)
+          test -f lib/models/settings.g.dart || (echo "Missing settings.g.dart" && exit 1)
+
+      - name: Analyze code
+        run: flutter analyze --no-fatal-infos
+
       - name: Build Android APK
         run: flutter build apk --release
 
@@ -66,6 +75,9 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Analyze code
+        run: flutter analyze --no-fatal-infos
 
       - name: Build Windows
         run: flutter build windows --release

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::path::PathBuf;
 use tokio::sync::Mutex;
 
@@ -13,7 +14,7 @@ pub struct AppState {
     pub automation_engine: Arc<Mutex<AutomationEngine>>,
 }
 
-static mut APP_STATE: Option<AppState> = None;
+static APP_STATE: OnceLock<AppState> = OnceLock::new();
 
 pub fn init_app(db_path: String) -> bool {
     let path = PathBuf::from(&db_path);
@@ -23,14 +24,11 @@ pub fn init_app(db_path: String) -> bool {
             let ai_engine = Arc::new(Mutex::new(AiEngine::new()));
             let automation_engine = Arc::new(Mutex::new(AutomationEngine::new()));
 
-            unsafe {
-                APP_STATE = Some(AppState {
-                    db,
-                    ai_engine,
-                    automation_engine,
-                });
-            }
-            true
+            APP_STATE.set(AppState {
+                db,
+                ai_engine,
+                automation_engine,
+            }).is_ok()
         }
         Err(e) => {
             tracing::error!("Failed to initialize database: {}", e);
@@ -40,7 +38,7 @@ pub fn init_app(db_path: String) -> bool {
 }
 
 fn get_state() -> &'static AppState {
-    unsafe { APP_STATE.as_ref().expect("App not initialized") }
+    APP_STATE.get().expect("App not initialized")
 }
 
 // AI Functions
