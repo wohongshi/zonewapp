@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/task_template.dart';
 import '../../providers/settings_provider.dart';
 import 'template_editor_screen.dart';
+import 'zongping_browser_screen.dart';
 
 /// Screen for managing all 12 综评 task templates.
 class TemplateListScreen extends ConsumerStatefulWidget {
@@ -186,12 +187,23 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
                     });
                   },
                 ),
-                onTap: () => _editTemplate(index),
+                onTap: () => _openBrowser(template),
+                onLongPress: () => _editTemplate(index),
               ),
             );
           }),
 
-          const SizedBox(height: 16),
+          // Hint
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              '💡 点击项目打开内置浏览器 | 长按编辑配置',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              textAlign: TextAlign.center,
+            ),
+          ),
+
+          const SizedBox(height: 8),
 
           // Save button
           FilledButton.icon(
@@ -219,16 +231,12 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
                           ?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   const Text(
-                    '1. 在电脑浏览器中打开综评平台\n'
-                    '2. 按 F12 打开开发者工具\n'
-                    '3. 用选择工具点击表单元素\n'
-                    '4. 记录元素的 id 或 class\n'
-                    '5. 在对应项目中填入 CSS 选择器\n\n'
-                    '选择器示例：\n'
-                    '• #username (id选择器)\n'
-                    '• .btn-submit (class选择器)\n'
-                    '• button[type=submit] (属性选择器)\n'
-                    '• input[name=content] (表单元素)',
+                    '1. 点击项目 → 打开内置浏览器查看综评页面\n'
+                    '2. 页面自动抓取表单字段（绿色=已填，橙色=待填）\n'
+                    '3. 切换到"AI生成"标签 → 点击一键生成\n'
+                    '4. AI内容自动拆分并匹配字段\n'
+                    '5. 切换到"填写"标签 → 点击一键填写\n\n'
+                    '长按项目可手动编辑配置（URL、选择器等）',
                     style: TextStyle(fontSize: 13),
                   ),
                 ],
@@ -236,6 +244,15 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openBrowser(TaskTemplate template) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ZongpingBrowserScreen(template: template),
       ),
     );
   }
