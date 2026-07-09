@@ -116,6 +116,13 @@ class _AboutScreenState extends State<AboutScreen> {
                   ),
                   const SizedBox(height: 8),
                   ListTile(
+                    leading: const Icon(Icons.code, color: Colors.black87),
+                    title: const Text('GitHub 仓库'),
+                    subtitle: const Text('https://github.com/wohongshi/zonewapp'),
+                    trailing: const Icon(Icons.open_in_new),
+                    onTap: () => _launchUrl('https://github.com/wohongshi/zonewapp'),
+                  ),
+                  ListTile(
                     leading: const Icon(Icons.video_library, color: Colors.pink),
                     title: const Text('哔哩哔哩主页'),
                     subtitle: const Text('https://b23.tv/koJLOZd'),

@@ -28,6 +28,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Generate Keystore
+        run: |
+          keytool -genkey -v \
+            -keystore android/app/zonewapp.jks \
+            -keyalg RSA -keysize 2048 \
+            -validity 36500 \
+            -alias zonewapp \
+            -storepass zonewapp123 \
+            -keypass zonewapp123 \
+            -dname "CN=hongshi, OU=dev, O=zonewapp, L=Jinan, ST=Shandong, C=CN"
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -43,5 +54,3 @@ jobs:
         with:
           name: android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-
-
