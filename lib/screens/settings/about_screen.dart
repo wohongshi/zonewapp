@@ -128,6 +128,40 @@ class _AboutScreenState extends State<AboutScreen> {
           ),
           const SizedBox(height: 16),
 
+          // Credits
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '致谢',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    leading: const Icon(Icons.api, color: Colors.green),
+                    title: const Text('WebAI2API'),
+                    subtitle: const Text('网页 AI 转 API 工具，支持 DeepSeek/ChatGPT/Gemini 等'),
+                    trailing: const Icon(Icons.open_in_new),
+                    onTap: () => _launchUrl('https://github.com/foxhui/WebAI2API'),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      '本项目的免费 AI 功能基于 WebAI2API 实现，感谢作者 foxhui 的开源贡献。',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // Secret web service toggle
           if (_secretUnlocked) ...[
             Card(

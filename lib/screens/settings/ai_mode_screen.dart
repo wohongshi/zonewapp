@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/settings.dart';
 import '../../services/ai_service.dart';
-import 'webview_login_screen.dart';
 
 class AiModeScreen extends ConsumerStatefulWidget {
   const AiModeScreen({super.key});
@@ -47,10 +46,10 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
         _temperature = config.temperature;
         _maxTokens = config.maxTokens;
       } else if (_selectedMode == 'web') {
-        final config = WebAiConfig.fromJson(settings.aiConfig!);
-        _webPlatform = config.platform;
-        _webCookiesController.text = config.cookies;
-        _webSessionController.text = config.sessionData;
+        // WebAI2API mode
+        _webCookiesController.text = settings.aiConfig!['serverUrl'] ?? '';
+        _webSessionController.text = settings.aiConfig!['serverToken'] ?? '';
+        _webPlatform = settings.aiConfig!['model'] ?? 'deepseek-chat';
       }
     }
   }
@@ -98,9 +97,9 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
                   const SizedBox(height: 8),
                   _buildModeOption(
                     'web',
-                    '网页模式',
-                    '登录AI账号使用网页版',
-                    Icons.language,
+                    'WebAI2API',
+                    '通过 WebAI2API 免费使用 DeepSeek/GPT/Gemini',
+                    Icons.api,
                   ),
                 ],
               ),
@@ -288,20 +287,49 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '网页模式配置',
+              'WebAI2API 配置',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              '需要先在电脑/服务器或 Termux 中部署 WebAI2API 服务',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const SizedBox(height: 16),
+            TextField(
+              controller: _webCookiesController,
+              decoration: const InputDecoration(
+                labelText: 'WebAI2API 地址',
+                hintText: 'http://192.168.1.100:3000',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.link),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _webSessionController,
+              decoration: const InputDecoration(
+                labelText: 'API Token（可选）',
+                hintText: '配置文件中的 auth 值',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.key),
+              ),
+            ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               value: _webPlatform,
               decoration: const InputDecoration(
-                labelText: 'AI平台',
+                labelText: '模型',
                 border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.smart_toy),
               ),
               items: const [
-                DropdownMenuItem(value: 'deepseek', child: Text('DeepSeek')),
+                DropdownMenuItem(value: 'deepseek-chat', child: Text('DeepSeek')),
+                DropdownMenuItem(value: 'gpt-4o-mini', child: Text('ChatGPT')),
+                DropdownMenuItem(value: 'gemini-2.0-flash', child: Text('Gemini')),
+                DropdownMenuItem(value: 'doubao', child: Text('豆包')),
               ],
               onChanged: (value) {
                 setState(() {
@@ -310,50 +338,12 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
               },
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _webCookiesController,
-              decoration: const InputDecoration(
-                labelText: 'Cookies (可选)',
-                hintText: '登录后获取的cookies',
-                border: OutlineInputBorder(),
+            Text(
+              '📋 部署指南: github.com/foxhui/WebAI2API',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.primary,
               ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _webSessionController,
-              decoration: const InputDecoration(
-                labelText: 'Session Token (可选)',
-                hintText: '登录后获取的token',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const WebViewLoginScreen(
-                      url: 'https://chat.deepseek.com/',
-                      title: '登录 DeepSeek',
-                    ),
-                  ),
-                );
-                if (result != null && result is Map<String, String>) {
-                  setState(() {
-                    _webCookiesController.text = result['cookies'] ?? '';
-                    _webSessionController.text = result['sessionToken'] ?? '';
-                  });
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('✅ Cookies 已获取')),
-                    );
-                  }
-                }
-              },
-              icon: const Icon(Icons.login),
-              label: const Text('登录 DeepSeek'),
             ),
           ],
         ),
@@ -396,14 +386,24 @@ class _AiModeScreenState extends ConsumerState<AiModeScreen> {
       await ref.read(settingsProvider.notifier).updateAiMode('api');
       await ref.read(settingsProvider.notifier).updateAiConfig(config.toJson());
     } else if (_selectedMode == 'web') {
-      final config = WebAiConfig(
-        platform: _webPlatform,
-        cookies: _webCookiesController.text,
-        sessionData: _webSessionController.text,
+      // WebAI2API mode - use ApiConfig pointing to WebAI2API endpoint
+      final serverUrl = _webCookiesController.text.trim();
+      final token = _webSessionController.text.trim();
+      final config = ApiConfig(
+        name: 'WebAI2API',
+        apiUrl: '$serverUrl/v1/chat/completions',
+        apiKey: token,
+        model: _webPlatform,
+        temperature: 0.7,
+        maxTokens: 500,
       );
-      AiService.instance.setWebMode(config);
+      AiService.instance.setApiMode(config);
       await ref.read(settingsProvider.notifier).updateAiMode('web');
-      await ref.read(settingsProvider.notifier).updateAiConfig(config.toJson());
+      await ref.read(settingsProvider.notifier).updateAiConfig({
+        'serverUrl': serverUrl,
+        'serverToken': token,
+        'model': _webPlatform,
+      });
     }
   }
 }
