@@ -40,7 +40,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
       _baseUrlController.text =
           config['baseUrl'] ?? 'https://szpj.sdei.edu.cn/zhszpj/web';
 
-      if (templateData != null && templateData is List) {
+      if (templateData != null && templateData is List && templateData.isNotEmpty) {
         _templates = templateData
             .map((e) {
               try {
@@ -53,8 +53,8 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
             .toList();
       }
 
-      // If templates empty or incomplete, load defaults
-      if (_templates.length < 12) {
+      // Only load defaults if no templates at all
+      if (_templates.isEmpty) {
         _templates = TaskTemplate.defaults();
       }
     } catch (_) {
@@ -264,6 +264,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
                   value: t.enabled,
                   onChanged: (v) {
                     setState(() => _templates[index] = t.copyWith(enabled: v));
+                    _saveTemplates();
                   },
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
