@@ -200,9 +200,6 @@ class _ZongpingBrowserScreenState
       child: Row(children: [
         _buildTab(0, Icons.search, '抓取', _scrapedFields.length),
         _buildTab(1, Icons.list_alt, '步骤', _template.steps.length),
-        _buildTab(2, _template.useAi ? Icons.smart_toy : Icons.edit,
-            _template.useAi ? 'AI填写' : '直接填写',
-            _fillResults.length),
       ]),
     );
   }
@@ -269,8 +266,6 @@ class _ZongpingBrowserScreenState
         return _buildScrapeTab();
       case 1:
         return _buildStepsTab();
-      case 2:
-        return _template.useAi ? _buildAiTab() : _buildDirectFillTab();
       default:
         return const SizedBox.shrink();
     }
@@ -498,40 +493,47 @@ class _ZongpingBrowserScreenState
 
   Widget _buildStepsTab() {
     return Column(children: [
-      // 添加步骤按钮
+      // 操作栏
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(children: [
           Expanded(
             child: OutlinedButton.icon(
               onPressed: _addStep,
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('添加步骤',
-                  style: TextStyle(fontSize: 12)),
+              label: const Text('添加', style: TextStyle(fontSize: 12)),
               style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 6)),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: OutlinedButton.icon(
               onPressed: () {
-                setState(() {
-                  _template = _template.copyWith(
-                      useAi: !_template.useAi);
-                });
+                setState(() => _template = _template.copyWith(useAi: !_template.useAi));
                 _saveAndNotify();
               },
-              icon: Icon(
-                  _template.useAi
-                      ? Icons.smart_toy
-                      : Icons.edit,
-                  size: 16),
-              label: Text(
-                  _template.useAi ? '切换为直接填写' : '切换为AI模式',
+              icon: Icon(_template.useAi ? Icons.smart_toy : Icons.edit, size: 16),
+              label: Text(_template.useAi ? 'AI模式' : '直接模式',
                   style: const TextStyle(fontSize: 12)),
               style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 6)),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _isFilling ? null : _executeSteps,
+              icon: _isFilling
+                  ? const SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.play_arrow, size: 16),
+              label: Text(_isFilling ? '执行中...' : '执行',
+                  style: const TextStyle(fontSize: 12)),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+              ),
             ),
           ),
         ]),
@@ -540,7 +542,7 @@ class _ZongpingBrowserScreenState
       Flexible(
         child: _template.steps.isEmpty
             ? const Center(
-                child: Text('暂无步骤，点击"添加步骤"',
+                child: Text('暂无步骤，点击"添加"',
                     style: TextStyle(color: Colors.grey, fontSize: 13)))
             : ReorderableListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -548,18 +550,49 @@ class _ZongpingBrowserScreenState
                 onReorder: (oldIdx, newIdx) {
                   setState(() {
                     if (newIdx > oldIdx) newIdx--;
-                    final steps =
-                        List<TemplateStep>.from(_template.steps);
+                    final steps = List<TemplateStep>.from(_template.steps);
                     final item = steps.removeAt(oldIdx);
                     steps.insert(newIdx, item);
                     _template = _template.copyWith(steps: steps);
                   });
                   _saveAndNotify();
                 },
-                itemBuilder: (context, i) =>
-                    _buildStepCard(i, _template.steps[i]),
+                itemBuilder: (context, i) => _buildStepCard(i, _template.steps[i]),
               ),
       ),
+      // 执行结果
+      if (_fillResults.isNotEmpty)
+        Container(
+          constraints: const BoxConstraints(maxHeight: 150),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+          ),
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            itemCount: _fillResults.length,
+            itemBuilder: (context, i) {
+              final r = _fillResults[i];
+              final ok = r.startsWith('✅');
+              final skip = r.startsWith('⏭️');
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(children: [
+                  Icon(
+                      ok ? Icons.check_circle
+                          : skip ? Icons.skip_next
+                          : Icons.cancel,
+                      size: 12,
+                      color: ok ? Colors.green : skip ? Colors.grey : Colors.red),
+                  const SizedBox(width: 4),
+                  Expanded(
+                      child: Text(r.substring(2),
+                          style: const TextStyle(fontSize: 11))),
+                ]),
+              );
+            },
+          ),
+        ),
     ]);
   }
 
@@ -573,6 +606,8 @@ class _ZongpingBrowserScreenState
         icon = Icons.edit; color = Colors.green; break;
       case 'select':
         icon = Icons.arrow_drop_down; color = Colors.orange; break;
+      case 'if':
+        icon = Icons.call_split; color = Colors.amber; break;
       case 'wait':
         icon = Icons.timer; color = Colors.grey; break;
       case 'screenshot':
@@ -709,6 +744,7 @@ class _ZongpingBrowserScreenState
                   DropdownMenuItem(value: 'fill', child: Text('填写输入框')),
                   DropdownMenuItem(value: 'click', child: Text('点击元素')),
                   DropdownMenuItem(value: 'select', child: Text('下拉选择')),
+                  DropdownMenuItem(value: 'if', child: Text('条件判断(if)')),
                   DropdownMenuItem(value: 'wait', child: Text('等待')),
                   DropdownMenuItem(value: 'screenshot', child: Text('截图')),
                   DropdownMenuItem(value: 'navigate', child: Text('跳转页面')),
@@ -730,6 +766,13 @@ class _ZongpingBrowserScreenState
                 _pickerField('填写值', valueCtrl, '固定值或 {ai_content}', null),
                 // 账号数据快捷填充
                 _buildAccountQuickFill(valueCtrl),
+              ],
+              if (selectedAction == 'if') ...[
+                const SizedBox(height: 10),
+                _pickerField('条件变量', selectorCtrl, '{position} / {reward} / {position:1}', null),
+                const SizedBox(height: 4),
+                Text('如果变量不为空则继续执行后续步骤，否则跳到下一个 if 或结束',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
               ],
               if (selectedAction == 'wait') ...[
                 const SizedBox(height: 10),
@@ -870,30 +913,33 @@ class _ZongpingBrowserScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // AI变量 + 账号数据
+          // 变量快捷按钮
           Wrap(
             spacing: 6,
             runSpacing: 4,
             children: [
               _quickBtn('{ai_content}', ctrl, Colors.blue),
               if (hasAccounts) ...[
-                for (final acc in accounts) ...[
-                  _quickBtn(acc.username, ctrl, Colors.indigo),
-                  _quickBtn(acc.teacherName, ctrl, Colors.indigo),
-                  for (final pos in acc.positions)
-                    _quickBtn(pos.title, ctrl, Colors.green),
-                  for (final rew in acc.rewards)
-                    _quickBtn(rew.title, ctrl, Colors.orange),
+                _quickBtn('{username}', ctrl, Colors.indigo),
+                _quickBtn('{password}', ctrl, Colors.indigo),
+                _quickBtn('{teacher}', ctrl, Colors.indigo),
+                _quickBtn('{subjects}', ctrl, Colors.indigo),
+                // 职务
+                for (int i = 0; i < (accounts.first.positions.length > 3 ? 3 : accounts.first.positions.length); i++)
+                  _quickBtn('{position:$i}', ctrl, Colors.green),
+                // 奖惩+等级
+                for (int i = 0; i < (accounts.first.rewards.length > 3 ? 3 : accounts.first.rewards.length); i++) ...[
+                  _quickBtn('{reward:$i}', ctrl, Colors.orange),
+                  _quickBtn('{reward_level:$i}', ctrl, Colors.orange),
                 ],
               ],
             ],
           ),
-          // 创新探究内容
+          // 创新探究
           if (hasSubjects) ...[
             const SizedBox(height: 4),
             Text('创新探究:',
-                style: TextStyle(
-                    fontSize: 10, color: Colors.grey.shade600)),
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
             const SizedBox(height: 2),
             Wrap(
               spacing: 6,
@@ -901,10 +947,7 @@ class _ZongpingBrowserScreenState
               children: [
                 for (final entry in subjectContents.entries)
                   if (entry.value.isNotEmpty)
-                    _quickBtn(
-                        '${entry.key}: ${entry.value.substring(0, entry.value.length > 20 ? 20 : entry.value.length)}...',
-                        ctrl,
-                        Colors.teal),
+                    _quickBtn('{subject:${entry.key}}', ctrl, Colors.teal),
               ],
             ),
           ],
@@ -967,300 +1010,30 @@ class _ZongpingBrowserScreenState
     }
   }
 
-  // ==================== AI填写 Tab ====================
-
-  Widget _buildAiTab() {
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _isGenerating ? null : _generateAiContent,
-            icon: _isGenerating
-                ? const SizedBox(
-                    width: 14, height: 14,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.auto_awesome, size: 16),
-            label: Text(_isGenerating ? 'AI 生成中...' : '一键生成内容',
-                style: const TextStyle(fontSize: 13)),
-            style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 8)),
-          ),
-        ),
-      ),
-      Flexible(
-        child: _aiResponse == null
-            ? const Center(
-                child: Text('先抓取表单，再点击"一键生成"',
-                    style: TextStyle(color: Colors.grey, fontSize: 13)))
-            : SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue.shade200),
-                        ),
-                        child: SelectableText(_aiResponse!,
-                            style: const TextStyle(fontSize: 12)),
-                      ),
-                      if (_fillPlans.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text('📋 已解析 ${_fillPlans.length} 个字段',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green.shade700)),
-                        ..._fillPlans.map((p) => Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
-                              child: Row(children: [
-                                const Icon(Icons.arrow_right,
-                                    size: 14, color: Colors.grey),
-                                Expanded(
-                                    child: Text(
-                                        '${p.field.displayName} → ${p.valueToFill}',
-                                        style: const TextStyle(
-                                            fontSize: 11))),
-                              ]),
-                            )),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _executeFill,
-                            icon: const Icon(Icons.done_all, size: 16),
-                            label: const Text('一键填写',
-                                style: TextStyle(fontSize: 13)),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ]),
-              ),
-      ),
-    ]);
-  }
-
-  // ==================== 直接填写 Tab ====================
-
-  Widget _buildDirectFillTab() {
-    final accounts = ref.watch(accountProvider);
-    final settings = ref.watch(settingsProvider);
-    final subjectContents = settings.subjectContents;
-
-    return Column(children: [
-      // 可用数据预览
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        child: Card(
-          margin: EdgeInsets.zero,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('可用数据',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary)),
-                const SizedBox(height: 4),
-                // 账号
-                if (accounts.isNotEmpty)
-                  for (final acc in accounts)
-                    Text('👤 ${acc.username} | 班主任: ${acc.teacherName} | ${acc.subjects.join("/")}',
-                        style: const TextStyle(fontSize: 10)),
-                // 职务
-                for (final acc in accounts)
-                  if (acc.positions.isNotEmpty)
-                    Text('📋 职务: ${acc.positions.map((p) => p.title).join(", ")}',
-                        style: const TextStyle(fontSize: 10)),
-                // 奖惩
-                for (final acc in accounts)
-                  if (acc.rewards.isNotEmpty)
-                    Text('🏆 奖惩: ${acc.rewards.map((r) => r.title).join(", ")}',
-                        style: const TextStyle(fontSize: 10)),
-                // 创新探究
-                if (subjectContents.isNotEmpty)
-                  Text('📚 探究: ${subjectContents.entries.where((e) => e.value.isNotEmpty).map((e) => e.key).join(", ")}',
-                      style: const TextStyle(fontSize: 10)),
-              ],
-            ),
-          ),
-        ),
-      ),
-      // 账号选择
-      if (accounts.length > 1)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(children: [
-            const Icon(Icons.person, size: 16),
-            const SizedBox(width: 6),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                    labelText: '选择账号',
-                    border: OutlineInputBorder(),
-                    isDense: true),
-                items: accounts
-                    .map((a) => DropdownMenuItem(
-                        value: a.id,
-                        child: Text(a.username,
-                            style: const TextStyle(fontSize: 13))))
-                    .toList(),
-                onChanged: (v) {
-                  // TODO: select account for auto-fill
-                },
-              ),
-            ),
-          ]),
-        ),
-      // 执行步骤按钮
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _isFilling ? null : _executeDirectSteps,
-            icon: _isFilling
-                ? const SizedBox(
-                    width: 14, height: 14,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.play_arrow, size: 16),
-            label: Text(
-                _isFilling ? '执行中...' : '执行 ${_template.steps.length} 个步骤',
-                style: const TextStyle(fontSize: 13)),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.green,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-            ),
-          ),
-        ),
-      ),
-      // 步骤执行结果
-      Flexible(
-        child: _fillResults.isEmpty
-            ? Center(
-                child: Text(
-                    _template.steps.isEmpty
-                        ? '请先在"步骤"标签中添加步骤'
-                        : '点击"执行"开始自动填写',
-                    style:
-                        const TextStyle(color: Colors.grey, fontSize: 13)))
-            : ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                itemCount: _fillResults.length,
-                itemBuilder: (context, i) {
-                  final r = _fillResults[i];
-                  final ok = r.startsWith('✅');
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Row(children: [
-                      Icon(ok ? Icons.check_circle : Icons.cancel,
-                          size: 14, color: ok ? Colors.green : Colors.red),
-                      const SizedBox(width: 6),
-                      Expanded(
-                          child: Text(r.substring(2),
-                              style: const TextStyle(fontSize: 12))),
-                    ]),
-                  );
-                }),
-      ),
-    ]);
-  }
-
-  // ==================== Actions ====================
-
-  Future<void> _generateAiContent() async {
-    if (_scrapedFields.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请先抓取表单字段')));
-      return;
-    }
-    setState(() {
-      _isGenerating = true;
-      _aiResponse = null;
-      _fillPlans = [];
-    });
-    try {
-      final t = _template;
-      final response = await AiFormFillerService.instance.generateForPage(
-        taskType: t.aiTaskType ?? t.id,
-        templatePrompt: t.aiPrompt ?? '请根据表单字段生成合适的内容',
-        scrapedFields: _scrapedFields,
-      );
-      if (response.success) {
-        final plans = AiFormFillerService.instance.parseAndMatch(
-          aiResponse: response.content,
-          fields: _scrapedFields,
-        );
-        setState(() {
-          _aiResponse = response.content;
-          _fillPlans = plans;
-        });
-      } else if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('AI失败: ${response.error}')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('错误: $e')));
-      }
-    } finally {
-      setState(() => _isGenerating = false);
-    }
-  }
-
-  Future<void> _executeFill() async {
-    setState(() { _isFilling = true; _fillResults = []; });
-    try {
-      final results =
-          await AiFormFillerService.instance.executeFillPlan(_fillPlans);
-      setState(() => _fillResults = results);
-      if (mounted) {
-        final ok = results.where((r) => r.startsWith('✅')).length;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('填写完成: $ok/${results.length} 项成功'),
-            duration: const Duration(seconds: 3)));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('出错: $e')));
-      }
-    } finally {
-      setState(() => _isFilling = false);
-    }
-  }
-
-  /// Execute steps directly (no AI).
-  Future<void> _executeDirectSteps() async {
+  Future<void> _executeSteps() async {
     setState(() { _isFilling = true; _fillResults = []; });
     final results = <String>[];
     final accounts = ref.read(accountProvider);
     final settings = ref.read(settingsProvider);
 
+    bool skipMode = false; // true = skipping until next if
+
     for (final step in _template.steps) {
       if (!_isFilling) break;
+
+      // If in skip mode, skip non-if steps
+      if (skipMode && step.action != 'if') {
+        results.add('⏭️ 跳过: ${step.description}');
+        continue;
+      }
+      if (skipMode && step.action == 'if') {
+        skipMode = false; // Reset skip mode at next if
+      }
+
       try {
         switch (step.action) {
           case 'fill':
             String value = step.value ?? '';
-            // Replace variables
             value = _replaceVariables(value, accounts, settings);
             if (step.selector.isNotEmpty && value.isNotEmpty) {
               await FormScraperService.instance
@@ -1281,11 +1054,22 @@ class _ZongpingBrowserScreenState
             break;
           case 'select':
             if (step.selector.isNotEmpty && step.value != null) {
+              final resolvedValue = _replaceVariables(step.value!, accounts, settings);
               await FormScraperService.instance
-                  .selectOptionByText(step.selector, step.value!);
+                  .selectOptionByText(step.selector, resolvedValue);
               results.add('✅ 选择: ${step.description}');
             } else {
               results.add('⚠️ 跳过: ${step.description}');
+            }
+            break;
+          case 'if':
+            final condition = step.selector ?? '';
+            final resolved = _replaceVariables(condition, accounts, settings);
+            if (resolved.isNotEmpty) {
+              results.add('✅ 条件成立: $condition');
+            } else {
+              results.add('⏭️ 条件不成立: $condition，跳过后续');
+              skipMode = true;
             }
             break;
           case 'wait':
@@ -1327,23 +1111,43 @@ class _ZongpingBrowserScreenState
       value = _template.directValue!;
     }
 
-    // {username} -> first account username
     if (accounts.isNotEmpty) {
-      value = value.replaceAll('{username}', accounts.first.username);
-      value = value.replaceAll('{teacher}', accounts.first.teacherName);
-      value = value.replaceAll('{subjects}', accounts.first.subjects.join('、'));
-      // {position} -> first position title
-      if (accounts.first.positions.isNotEmpty) {
-        value = value.replaceAll('{position}', accounts.first.positions.first.title);
-        value = value.replaceAll('{position_desc}', accounts.first.positions.first.description);
-      }
-      // {reward} -> first reward title
-      if (accounts.first.rewards.isNotEmpty) {
-        value = value.replaceAll('{reward}', accounts.first.rewards.first.title);
-      }
+      final acc = accounts.first;
+      value = value.replaceAll('{username}', acc.username);
+      value = value.replaceAll('{password}', acc.password);
+      value = value.replaceAll('{teacher}', acc.teacherName);
+      value = value.replaceAll('{subjects}', acc.subjects.join('、'));
+
+      // {position} or {position:0} -> first position title
+      // {position:1} -> second position title
+      // {position_desc} or {position_desc:0} -> first position description
+      final posPattern = RegExp(r'\{position(?:_desc)?(?::(\d+))?\}');
+      value = value.replaceAllMapped(posPattern, (match) {
+        final isDesc = match.group(0)!.contains('_desc');
+        final idx = int.tryParse(match.group(1) ?? '0') ?? 0;
+        if (acc.positions.length > idx) {
+          return isDesc
+              ? acc.positions[idx].description
+              : acc.positions[idx].title;
+        }
+        return '';
+      });
+
+      // {reward} or {reward:0} -> first reward title
+      // {reward:1} -> second reward title
+      // {reward_level} or {reward_level:0} -> first reward level
+      final rewPattern = RegExp(r'\{reward(?:_level)?(?::(\d+))?\}');
+      value = value.replaceAllMapped(rewPattern, (match) {
+        final isLevel = match.group(0)!.contains('_level');
+        final idx = int.tryParse(match.group(1) ?? '0') ?? 0;
+        if (acc.rewards.length > idx) {
+          return isLevel ? acc.rewards[idx].level : acc.rewards[idx].title;
+        }
+        return '';
+      });
     }
 
-    // {subject:物理} -> subject content for 物理
+    // {subject:物理} -> subject content
     final subjectPattern = RegExp(r'\{subject:(.+?)\}');
     value = value.replaceAllMapped(subjectPattern, (match) {
       final subject = match.group(1)!;

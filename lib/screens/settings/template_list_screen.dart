@@ -18,12 +18,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
   List<TaskTemplate> _templates = [];
   final _loginUrlController = TextEditingController();
   final _baseUrlController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadTemplates();
-  }
+  bool _loaded = false;
 
   @override
   void dispose() {
@@ -32,21 +27,37 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
     super.dispose();
   }
 
-  void _loadTemplates() {
-    final settings = ref.read(settingsProvider);
-    final config = settings.aiConfig ?? {};
-    final templateData = config['taskTemplates'];
+  void _ensureLoaded() {
+    if (_loaded) return;
+    _loaded = true;
+    try {
+      final settings = ref.read(settingsProvider);
+      final config = settings.aiConfig ?? {};
+      final templateData = config['taskTemplates'];
 
-    _loginUrlController.text =
-        config['loginUrl'] ?? 'https://szpj.sdei.edu.cn/zhszpj/web/login.htm';
-    _baseUrlController.text =
-        config['baseUrl'] ?? 'https://szpj.sdei.edu.cn/zhszpj/web';
+      _loginUrlController.text =
+          config['loginUrl'] ?? 'https://szpj.sdei.edu.cn/zhszpj/web/login.htm';
+      _baseUrlController.text =
+          config['baseUrl'] ?? 'https://szpj.sdei.edu.cn/zhszpj/web';
 
-    if (templateData != null && templateData is List) {
-      _templates = templateData
-          .map((e) => TaskTemplate.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-    } else {
+      if (templateData != null && templateData is List) {
+        _templates = templateData
+            .map((e) {
+              try {
+                return TaskTemplate.fromJson(Map<String, dynamic>.from(e));
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<TaskTemplate>()
+            .toList();
+      }
+
+      // If templates empty or incomplete, load defaults
+      if (_templates.length < 12) {
+        _templates = TaskTemplate.defaults();
+      }
+    } catch (_) {
       _templates = TaskTemplate.defaults();
     }
   }
@@ -67,14 +78,14 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
     }
   }
 
-  /// Called from browser when steps are modified — saves back to list.
   void _onTemplateUpdated(int index, TaskTemplate updated) {
     setState(() => _templates[index] = updated);
-    _saveTemplates(); // Auto-save
+    _saveTemplates();
   }
 
   @override
   Widget build(BuildContext context) {
+    _ensureLoaded();
     final accounts = ref.watch(accountProvider);
     final configuredCount =
         _templates.where((t) => t.steps.any((s) => s.selector.isNotEmpty)).length;
@@ -85,7 +96,10 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              setState(() => _templates = TaskTemplate.defaults());
+              setState(() {
+                _templates = TaskTemplate.defaults();
+                _loaded = false;
+              });
             },
             child: const Text('重置默认'),
           ),
@@ -130,7 +144,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
           ),
           const SizedBox(height: 12),
 
-          // ===== 账号选择提示 =====
+          // ===== 账号提示 =====
           if (accounts.isNotEmpty)
             Card(
               child: Padding(
@@ -180,7 +194,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
           ),
           const SizedBox(height: 12),
 
-          // ===== 12个项目列表 =====
+          // ===== 项目列表 =====
           ..._templates.asMap().entries.map((entry) {
             final index = entry.key;
             final t = entry.value;
@@ -193,15 +207,15 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
                 leading: CircleAvatar(
                   radius: 16,
                   backgroundColor: t.enabled
-                      ? (t.useAi
-                          ? Colors.blue.shade100
-                          : Colors.green.shade100)
+                      ? (hasSelectors
+                          ? Colors.green.shade100
+                          : Colors.orange.shade100)
                       : Colors.grey.shade200,
                   child: Text('${index + 1}',
                       style: TextStyle(
                         fontSize: 13,
                         color: t.enabled
-                            ? (t.useAi ? Colors.blue : Colors.green)
+                            ? (hasSelectors ? Colors.green : Colors.orange)
                             : Colors.grey,
                         fontWeight: FontWeight.bold,
                       )),
@@ -214,7 +228,6 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
                         color: t.enabled ? null : Colors.grey,
                       )),
                   const SizedBox(width: 6),
-                  // AI/直接 标签
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -242,7 +255,8 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
                   ),
                 ]),
                 subtitle: Text(
-                  t.url.replaceAll('https://szpj.sdei.edu.cn/zhszpj/web/', ''),
+                  t.url.replaceAll(
+                      'https://szpj.sdei.edu.cn/zhszpj/web/', ''),
                   style: const TextStyle(fontSize: 10, color: Colors.grey),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -294,17 +308,13 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen> {
           ),
 
           const SizedBox(height: 8),
-
-          // ===== 提示 =====
           Text(
-            '💡 点击项目 → 内置浏览器（可编辑步骤） | 长按 → 快速编辑',
+            '💡 点击项目 → 内置浏览器 | 长按 → 快速编辑',
             style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
             textAlign: TextAlign.center,
           ),
-
           const SizedBox(height: 12),
 
-          // ===== 保存按钮 =====
           FilledButton.icon(
             onPressed: _saveTemplates,
             icon: const Icon(Icons.save),
