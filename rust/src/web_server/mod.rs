@@ -6,7 +6,7 @@ use axum::{
     http::{StatusCode, HeaderMap},
     middleware::{self, Next},
 };
-use tower_http::cors::{CorsLayer, AllowOrigin};
+use tower_http::cors::CorsLayer;
 use std::sync::Arc;
 use std::net::SocketAddr;
 use serde::{Deserialize, Serialize};
