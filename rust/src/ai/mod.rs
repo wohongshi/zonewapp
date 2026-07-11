@@ -74,6 +74,10 @@ impl AiEngine {
             "model": config.model,
             "messages": [
                 {
+                    "role": "system",
+                    "content": "你是一个帮助高中生填写山东省综合评价平台的AI助手。请根据要求生成简洁、真实、符合学生身份的内容。字数严格控制在25-200字之间。不要包含标题、序号或多余的格式符号。"
+                },
+                {
                     "role": "user",
                     "content": prompt
                 }
@@ -113,8 +117,9 @@ impl AiEngine {
     }
 
     async fn send_web_request(&self, config: &WebConfig, prompt: &str) -> Result<AiResponse> {
-        // Web mode uses the DeepSeek API as fallback since direct web automation
-        // is handled by the Flutter WebView layer
+        // Web mode: replay captured request from browser automation.
+        // The actual web automation is handled by Flutter's WebView layer;
+        // this Rust-side fallback uses the DeepSeek API directly.
         let api_url = match config.platform.as_str() {
             "deepseek" => "https://api.deepseek.com/v1/chat/completions",
             _ => return Ok(AiResponse {
@@ -124,10 +129,13 @@ impl AiEngine {
             }),
         };
 
-        // Extract session token from cookies if available
         let body = serde_json::json!({
             "model": "deepseek-chat",
             "messages": [
+                {
+                    "role": "system",
+                    "content": "你是一个帮助高中生填写山东省综合评价平台的AI助手。请根据要求生成简洁、真实、符合学生身份的内容。字数严格控制在25-200字之间。不要包含标题、序号或多余的格式符号。"
+                },
                 {
                     "role": "user",
                     "content": prompt

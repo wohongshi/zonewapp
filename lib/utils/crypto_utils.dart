@@ -1,17 +1,43 @@
 import 'dart:convert';
+import 'dart:math';
+import 'package:hive/hive.dart';
 
-/// Simple password obfuscation for local storage.
+/// Password obfuscation for local storage.
+/// On first run, generates a random per-device key and persists it in Hive.
 /// This is NOT production-grade encryption — it prevents casual reading
 /// of plaintext passwords from Hive/SQLite files.
 /// For stronger security, consider using flutter_secure_storage or HiveAesCipher.
 class CryptoUtils {
-  static const String _key = 'zonewapp_v1_2024';
+  static const String _keyBoxName = 'crypto';
+  static const String _keyFieldName = 'encryption_key';
+  static const int _keyLength = 32;
+  static String? _cachedKey;
 
-  /// Encrypt a plaintext string using XOR + base64.
-  static String encrypt(String plaintext) {
+  /// Get or generate the encryption key.
+  static Future<String> _getKey() async {
+    if (_cachedKey != null) return _cachedKey!;
+
+    final box = await Hive.openBox(_keyBoxName);
+    String? storedKey = box.get(_keyFieldName);
+
+    if (storedKey == null || storedKey.isEmpty) {
+      // Generate a cryptographically random key on first run
+      final random = Random.secure();
+      final keyBytes = List<int>.generate(_keyLength, (_) => random.nextInt(256));
+      storedKey = base64Encode(keyBytes);
+      await box.put(_keyFieldName, storedKey);
+    }
+
+    _cachedKey = storedKey;
+    return storedKey;
+  }
+
+  /// Encrypt a plaintext string using XOR + base64 with per-device key.
+  static Future<String> encrypt(String plaintext) async {
     if (plaintext.isEmpty) return plaintext;
+    final key = await _getKey();
     final bytes = utf8.encode(plaintext);
-    final keyBytes = utf8.encode(_key);
+    final keyBytes = utf8.encode(key);
     final encrypted = List<int>.generate(
       bytes.length,
       (i) => bytes[i] ^ keyBytes[i % keyBytes.length],
@@ -20,11 +46,12 @@ class CryptoUtils {
   }
 
   /// Decrypt an encrypted string back to plaintext.
-  static String decrypt(String encrypted) {
+  static Future<String> decrypt(String encrypted) async {
     if (encrypted.isEmpty) return encrypted;
     try {
+      final key = await _getKey();
       final bytes = base64Decode(encrypted);
-      final keyBytes = utf8.encode(_key);
+      final keyBytes = utf8.encode(key);
       final decrypted = List<int>.generate(
         bytes.length,
         (i) => bytes[i] ^ keyBytes[i % keyBytes.length],
@@ -41,8 +68,6 @@ class CryptoUtils {
     if (value.isEmpty) return false;
     try {
       base64Decode(value);
-      // base64 strings are typically longer than the original for short passwords
-      // and don't contain Chinese characters or common password chars directly
       return !value.contains(RegExp(r'[^\w+/=]'));
     } catch (e) {
       return false;

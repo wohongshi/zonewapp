@@ -71,6 +71,7 @@ class AiService {
       data: {
         'model': _apiConfig!.model,
         'messages': [
+          {'role': 'system', 'content': '你是一个帮助高中生填写山东省综合评价平台的AI助手。请根据要求生成简洁、真实、符合学生身份的内容。字数严格控制在25-200字之间。不要包含标题、序号或多余的格式符号。'},
           {'role': 'user', 'content': prompt},
         ],
         'temperature': _apiConfig!.temperature,
@@ -234,6 +235,7 @@ class AiService {
     if (url.contains('deepseek')) {
       return {
         'messages': [
+          {'role': 'system', 'content': '你是一个帮助高中生填写山东省综合评价平台的AI助手。请根据要求生成简洁、真实、符合学生身份的内容。字数严格控制在25-200字之间。'},
           {'role': 'user', 'content': prompt}
         ],
         'model': 'deepseek-chat',
@@ -243,6 +245,7 @@ class AiService {
     // Generic OpenAI-compatible
     return {
       'messages': [
+        {'role': 'system', 'content': '你是一个帮助高中生填写山东省综合评价平台的AI助手。请根据要求生成简洁、真实、符合学生身份的内容。字数严格控制在25-200字之间。'},
         {'role': 'user', 'content': prompt}
       ],
       'stream': false,
@@ -361,6 +364,7 @@ class AiService {
         data: {
           'model': 'deepseek-chat',
           'messages': [
+            {'role': 'system', 'content': '你是一个帮助高中生填写山东省综合评价平台的AI助手。请根据要求生成简洁、真实、符合学生身份的内容。字数严格控制在25-200字之间。不要包含标题、序号或多余的格式符号。'},
             {'role': 'user', 'content': prompt},
           ],
           'temperature': 0.7,

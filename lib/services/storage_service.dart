@@ -43,7 +43,7 @@ class StorageService {
         try {
           final decoded = jsonDecode(json);
           if (decoded['password'] != null) {
-            decoded['password'] = CryptoUtils.decrypt(decoded['password']);
+            decoded['password'] = await CryptoUtils.decrypt(decoded['password']);
           }
           accounts.add(Account.fromJson(decoded));
         } catch (_) {}
@@ -55,13 +55,13 @@ class StorageService {
 
   Future<void> addAccount(Account account) async {
     final data = account.toJson();
-    data['password'] = CryptoUtils.encrypt(account.password);
+    data['password'] = await CryptoUtils.encrypt(account.password);
     await _accountsBox?.put(account.id, jsonEncode(data));
   }
 
   Future<void> updateAccount(Account account) async {
     final data = account.toJson();
-    data['password'] = CryptoUtils.encrypt(account.password);
+    data['password'] = await CryptoUtils.encrypt(account.password);
     await _accountsBox?.put(account.id, jsonEncode(data));
   }
 
@@ -76,14 +76,17 @@ class StorageService {
     final settings = await loadSettings();
     final accounts = await loadAccounts();
 
+    final List<Map<String, dynamic>> encryptedAccounts = [];
+    for (final a in accounts) {
+      final json = a.toJson();
+      json['password'] = await CryptoUtils.encrypt(a.password);
+      encryptedAccounts.add(json);
+    }
+
     final Map<String, dynamic> data = {
       'version': 1,
       'settings': settings.toJson(),
-      'accounts': accounts.map((a) {
-        final json = a.toJson();
-        json['password'] = CryptoUtils.encrypt(a.password);
-        return json;
-      }).toList(),
+      'accounts': encryptedAccounts,
       'exported_at': DateTime.now().toIso8601String(),
     };
 
@@ -129,7 +132,7 @@ class StorageService {
         for (final accountJson in data['accounts']) {
           final decoded = Map<String, dynamic>.from(accountJson);
           if (decoded['password'] != null) {
-            decoded['password'] = CryptoUtils.decrypt(decoded['password']);
+            decoded['password'] = await CryptoUtils.decrypt(decoded['password']);
           }
           final account = Account.fromJson(decoded);
           await addAccount(account);

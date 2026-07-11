@@ -37,14 +37,9 @@ impl<T: Serialize> ApiResponse<T> {
     }
 }
 
-/// Generate a random access token for web server authentication.
+/// Generate a cryptographically random access token for web server authentication.
 fn generate_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("zwa_{:x}", timestamp)
+    uuid::Uuid::new_v4().to_string()
 }
 
 /// Middleware to verify Bearer token authentication on API endpoints.
@@ -87,9 +82,12 @@ pub async fn start_web_server(db: Arc<Database>, port: u16) -> anyhow::Result<()
         access_token: Arc::new(RwLock::new(access_token)),
     };
 
-    // CORS: allow only localhost origins
+    // CORS: allow localhost origins only
     let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::exact(format!("http://127.0.0.1:{}", port).parse().unwrap()))
+        .allow_origin([
+            format!("http://127.0.0.1:{}", port).parse().unwrap(),
+            format!("http://localhost:{}", port).parse().unwrap(),
+        ])
         .allow_methods([
             axum::http::Method::GET,
             axum::http::Method::POST,

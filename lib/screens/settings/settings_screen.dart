@@ -143,21 +143,79 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
         // Web Service
         Card(
-          child: SwitchListTile(
-            secondary: const Icon(Icons.language),
-            title: const Text('Web服务'),
-            subtitle: Text(WebServerService.instance.isRunning
-                ? '运行中 - $_lanIp:35535'
-                : '未运行'),
-            value: WebServerService.instance.isRunning,
-            onChanged: (value) async {
-              if (value) {
-                await WebServerService.instance.start();
-              } else {
-                await WebServerService.instance.stop();
-              }
-              setState(() {});
-            },
+          child: Column(
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.language),
+                title: const Text('Web服务'),
+                subtitle: Text(WebServerService.instance.isRunning
+                    ? '运行中 - ${settings.lanAccessEnabled ? _lanIp : "127.0.0.1"}:${settings.webServicePort}'
+                    : '未运行'),
+                value: WebServerService.instance.isRunning,
+                onChanged: (value) async {
+                  if (value) {
+                    await WebServerService.instance.start(
+                      lanAccess: settings.lanAccessEnabled,
+                      port: settings.webServicePort,
+                    );
+                    // Show access token to user
+                    if (mounted) {
+                      _showTokenDialog();
+                    }
+                  } else {
+                    await WebServerService.instance.stop();
+                  }
+                  setState(() {});
+                },
+              ),
+              if (WebServerService.instance.isRunning) ...[
+                const Divider(height: 1),
+                // Access token display
+                ListTile(
+                  leading: const Icon(Icons.key, size: 20),
+                  title: const Text('访问令牌', style: TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    WebServerService.instance.accessToken ?? '未生成',
+                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.copy, size: 18),
+                    onPressed: () {
+                      // Copy token to clipboard
+                    },
+                  ),
+                ),
+              ],
+              const Divider(height: 1),
+              // LAN access toggle
+              SwitchListTile(
+                secondary: const Icon(Icons.wifi),
+                title: const Text('局域网访问'),
+                subtitle: const Text('允许局域网内其他设备访问 Web 管理界面'),
+                value: settings.lanAccessEnabled,
+                onChanged: (value) {
+                  ref.read(settingsProvider.notifier).updateLanAccess(value);
+                  // If server is running, restart with new settings
+                  if (WebServerService.instance.isRunning) {
+                    WebServerService.instance.stop();
+                    WebServerService.instance.start(
+                      lanAccess: value,
+                      port: settings.webServicePort,
+                    );
+                    setState(() {});
+                  }
+                },
+              ),
+              const Divider(height: 1),
+              // Port configuration
+              ListTile(
+                leading: const Icon(Icons.numbers),
+                title: const Text('端口号'),
+                subtitle: Text('${settings.webServicePort}'),
+                trailing: const Icon(Icons.edit, size: 18),
+                onTap: () => _showPortDialog(settings.webServicePort),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 8),
@@ -245,6 +303,89 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       default:
         return '跟随系统';
     }
+  }
+
+  void _showTokenDialog() {
+    final settings = ref.read(settingsProvider);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('访问令牌'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('请在浏览器中输入此令牌进行登录：'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                WebServerService.instance.accessToken ?? '',
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '访问地址: http://${settings.lanAccessEnabled ? _lanIp : "127.0.0.1"}:${settings.webServicePort}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPortDialog(int currentPort) {
+    final controller = TextEditingController(text: currentPort.toString());
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('设置端口号'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: '端口号',
+            hintText: '1024-65535',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final port = int.tryParse(controller.text);
+              if (port != null && port >= 1024 && port <= 65535) {
+                ref.read(settingsProvider.notifier).updateWebServicePort(port);
+                // Restart server if running
+                if (WebServerService.instance.isRunning) {
+                  WebServerService.instance.stop();
+                  WebServerService.instance.start(
+                    lanAccess: ref.read(settingsProvider).lanAccessEnabled,
+                    port: port,
+                  );
+                  setState(() {});
+                }
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showThemeDialog() {

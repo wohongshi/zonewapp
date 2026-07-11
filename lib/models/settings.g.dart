@@ -17,6 +17,8 @@ AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => AppSettings(
       notificationEnabled: json['notificationEnabled'] as bool? ?? true,
       webServiceEnabled: json['webServiceEnabled'] as bool? ?? false,
       predictiveBackEnabled: json['predictiveBackEnabled'] as bool? ?? false,
+      lanAccessEnabled: json['lanAccessEnabled'] as bool? ?? false,
+      webServicePort: (json['webServicePort'] as num?)?.toInt() ?? 35535,
     );
 
 Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
@@ -28,6 +30,8 @@ Map<String, dynamic> _$AppSettingsToJson(AppSettings instance) =>
       'notificationEnabled': instance.notificationEnabled,
       'webServiceEnabled': instance.webServiceEnabled,
       'predictiveBackEnabled': instance.predictiveBackEnabled,
+      'lanAccessEnabled': instance.lanAccessEnabled,
+      'webServicePort': instance.webServicePort,
     };
 
 ApiConfig _$ApiConfigFromJson(Map<String, dynamic> json) => ApiConfig(

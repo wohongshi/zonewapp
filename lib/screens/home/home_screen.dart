@@ -6,6 +6,7 @@ import '../../providers/automation_provider.dart';
 import '../../services/automation_service.dart';
 import '../../services/notification_service.dart';
 import '../../models/account.dart';
+import '../../screens/webview/automation_webview_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -262,7 +263,7 @@ class HomeScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('开始自动化'),
-        content: Text('确定要开始为账号 ${account.username} 执行自动化任务吗？'),
+        content: Text('确定要开始为账号 ${account.username} 执行自动化任务吗？\n\n将打开 WebView 页面进行自动化操作。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -271,6 +272,8 @@ class HomeScreen extends ConsumerWidget {
           FilledButton(
             onPressed: () {
               Navigator.pop(context);
+
+              // Set up callbacks
               ref.read(automationProvider.notifier).startAutomation(account);
               AutomationService.instance.onProgressUpdate = (progress, task) {
                 ref.read(automationProvider.notifier).updateProgress(progress, task);
@@ -290,7 +293,16 @@ class HomeScreen extends ConsumerWidget {
                   error: error,
                 );
               };
-              AutomationService.instance.startAutomation(account);
+
+              // Navigate to WebView screen for automation
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AutomationWebViewScreen(
+                    account: account,
+                  ),
+                ),
+              );
             },
             child: const Text('确定'),
           ),

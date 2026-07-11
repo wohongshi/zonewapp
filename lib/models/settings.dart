@@ -11,6 +11,8 @@ class AppSettings {
   final bool notificationEnabled;
   final bool webServiceEnabled;
   final bool predictiveBackEnabled;
+  final bool lanAccessEnabled;
+  final int webServicePort;
 
   AppSettings({
     this.themeMode = 'system',
@@ -20,6 +22,8 @@ class AppSettings {
     this.notificationEnabled = true,
     this.webServiceEnabled = false,
     this.predictiveBackEnabled = false,
+    this.lanAccessEnabled = false,
+    this.webServicePort = 35535,
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => _$AppSettingsFromJson(json);
@@ -33,6 +37,8 @@ class AppSettings {
     bool? notificationEnabled,
     bool? webServiceEnabled,
     bool? predictiveBackEnabled,
+    bool? lanAccessEnabled,
+    int? webServicePort,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -42,6 +48,8 @@ class AppSettings {
       notificationEnabled: notificationEnabled ?? this.notificationEnabled,
       webServiceEnabled: webServiceEnabled ?? this.webServiceEnabled,
       predictiveBackEnabled: predictiveBackEnabled ?? this.predictiveBackEnabled,
+      lanAccessEnabled: lanAccessEnabled ?? this.lanAccessEnabled,
+      webServicePort: webServicePort ?? this.webServicePort,
     );
   }
 }

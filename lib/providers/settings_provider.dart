@@ -49,6 +49,16 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     await _saveSettings();
   }
 
+  Future<void> updateLanAccess(bool enabled) async {
+    state = state.copyWith(lanAccessEnabled: enabled);
+    await _saveSettings();
+  }
+
+  Future<void> updateWebServicePort(int port) async {
+    state = state.copyWith(webServicePort: port);
+    await _saveSettings();
+  }
+
   Future<void> _saveSettings() async {
     await StorageService.instance.saveSettings(state);
   }

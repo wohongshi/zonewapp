@@ -13,11 +13,15 @@ class WebServerService {
   HttpServer? _server;
   bool _isRunning = false;
   String? _accessToken;
+  bool _lanAccess = false;
+  int _port = 35535;
 
   bool get isRunning => _isRunning;
   String? get accessToken => _accessToken;
+  int get port => _port;
+  bool get lanAccess => _lanAccess;
 
-  /// Generate a new access token for the web server.
+  /// Generate a new cryptographically random access token.
   /// Returns the token that clients must provide as Bearer auth.
   String generateToken() {
     _accessToken = const Uuid().v4();
@@ -29,27 +33,46 @@ class WebServerService {
     _accessToken = null;
   }
 
-  Future<void> start({int port = 35535}) async {
+  Future<void> start({bool lanAccess = false, int port = 35535}) async {
     if (_isRunning) return;
+
+    _lanAccess = lanAccess;
+    _port = port;
 
     // Generate a token if one doesn't exist
     _accessToken ??= generateToken();
 
-    // Bind to both IPv4 and IPv6 for external access
-    try {
-      _server = await HttpServer.bind(InternetAddress.anyIPv6, port, v6Only: false);
-    } catch (e) {
-      // Fallback to IPv4 only if IPv6 is not available
-      debugPrint('IPv6 bind failed, falling back to IPv4: $e');
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+    if (_lanAccess) {
+      // Bind to all interfaces for LAN access
+      try {
+        _server = await HttpServer.bind(InternetAddress.anyIPv6, port, v6Only: false);
+      } catch (e) {
+        debugPrint('IPv6 bind failed, falling back to IPv4: $e');
+        _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+      }
+      debugPrint('Web server running on http://0.0.0.0:$port (LAN access enabled)');
+    } else {
+      // Localhost only
+      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+      debugPrint('Web server running on http://127.0.0.1:$port (localhost only)');
     }
     _isRunning = true;
 
-    debugPrint('Web server running on http://0.0.0.0:$port');
-
     _server!.listen((HttpRequest request) async {
-      // CORS headers - restrict to localhost origins only
-      request.response.headers.set('Access-Control-Allow-Origin', '*');
+      final origin = request.headers.value('Origin');
+
+      // CORS headers - restrict based on LAN access setting
+      if (_lanAccess) {
+        // LAN mode: allow same-origin and localhost origins
+        if (origin != null && _isAllowedOrigin(origin)) {
+          request.response.headers.set('Access-Control-Allow-Origin', origin);
+        }
+      } else {
+        // Localhost only: allow localhost origins
+        if (origin != null && _isLocalhostOrigin(origin)) {
+          request.response.headers.set('Access-Control-Allow-Origin', origin);
+        }
+      }
       request.response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       request.response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -82,6 +105,20 @@ class WebServerService {
         await request.response.close();
       }
     });
+  }
+
+  bool _isLocalhostOrigin(String origin) {
+    return origin.startsWith('http://127.0.0.1') ||
+        origin.startsWith('http://localhost') ||
+        origin.startsWith('https://127.0.0.1') ||
+        origin.startsWith('https://localhost');
+  }
+
+  bool _isAllowedOrigin(String origin) {
+    // In LAN mode, allow localhost + any origin on the same network
+    if (_isLocalhostOrigin(origin)) return true;
+    // Allow any HTTP origin (LAN access is explicitly enabled by user)
+    return origin.startsWith('http://') || origin.startsWith('https://');
   }
 
   bool _verifyAuth(HttpRequest request) {
@@ -128,6 +165,9 @@ class WebServerService {
   }
 
   Future<void> _serveIndex(HttpRequest request) async {
+    // Token is NOT embedded in HTML; client must obtain it via a secure flow.
+    // For now, the page fetches /api/status without auth (public page)
+    // and shows a login prompt for API operations.
     final html = '''
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -171,9 +211,24 @@ class WebServerService {
         .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100; }
         .modal.active { display: flex; align-items: center; justify-content: center; }
         .modal-content { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; }
+        .login-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 200; display: flex; align-items: center; justify-content: center; }
+        .login-box { background: white; border-radius: 12px; padding: 32px; width: 90%; max-width: 360px; text-align: center; }
+        .login-box h2 { margin-bottom: 8px; }
+        .login-box p { color: #666; font-size: 13px; margin-bottom: 20px; }
+        .login-box input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 12px; font-size: 14px; }
+        .login-error { color: #c62828; font-size: 12px; margin-bottom: 8px; display: none; }
     </style>
 </head>
 <body>
+    <div class="login-overlay" id="login-overlay">
+        <div class="login-box">
+            <h2>ZonewApp</h2>
+            <p>请输入访问令牌以继续<br>（在 App 设置 → Web 服务中查看）</p>
+            <div class="login-error" id="login-error">令牌无效，请重试</div>
+            <input type="password" id="token-input" placeholder="访问令牌" onkeydown="if(event.key==='Enter')doLogin()">
+            <button class="btn btn-primary" style="width:100%;padding:12px" onclick="doLogin()">登录</button>
+        </div>
+    </div>
     <div class="header">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
         <h1>ZonewApp Web Control</h1>
@@ -257,7 +312,7 @@ class WebServerService {
         </div>
     </div>
     <script>
-        var TOKEN = '$_accessToken';
+        var TOKEN = '';
         var selectedSubjects = [];
         var positions = [];
         var rewards = [];
@@ -265,6 +320,30 @@ class WebServerService {
         function authHeaders(){
             return TOKEN ? {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'} : {'Content-Type': 'application/json'};
         }
+        function doLogin(){
+            var input = document.getElementById('token-input').value.trim();
+            if(!input) return;
+            TOKEN = input;
+            // Test the token by fetching status
+            fetch('/api/status', {headers: authHeaders()}).then(function(r){
+                if(r.ok){
+                    document.getElementById('login-overlay').style.display = 'none';
+                    sessionStorage.setItem('zwa_token', TOKEN);
+                    load();
+                } else {
+                    document.getElementById('login-error').style.display = 'block';
+                    TOKEN = '';
+                }
+            }).catch(function(){
+                document.getElementById('login-error').style.display = 'block';
+                TOKEN = '';
+            });
+        }
+        // Auto-login from session storage
+        (function(){
+            var saved = sessionStorage.getItem('zwa_token');
+            if(saved){ TOKEN = saved; doLogin(); }
+        })();
         function showPage(p,btn){
             document.getElementById('home-page').style.display=p==='home'?'block':'none';
             document.getElementById('account-page').style.display=p==='account'?'block':'none';
@@ -352,7 +431,6 @@ class WebServerService {
             await fetch('/api/accounts',{method:'POST',headers:authHeaders(),body:JSON.stringify(a)});
             closeModal();load();
         }
-        load();setInterval(load,30000);
     </script>
 </body>
 </html>
